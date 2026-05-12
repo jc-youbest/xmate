@@ -9,7 +9,8 @@ pick any unblocked feature next.
 New features get a new `F-XXX` and a file copied from
 [`_template.md`](_template.md).
 
-ID scheme: F-XXX, monotonic, never reused.
+ID scheme: F-XXX, monotonic, never reused. Withdrawn IDs are not reissued —
+gaps in the sequence are normal.
 
 ## Foundation — Local Handwriting & Notes
 
@@ -31,7 +32,9 @@ ID scheme: F-XXX, monotonic, never reused.
 - F-016 Export to PDF — _not yet written_
 - F-017 Export to image — _not yet written_
 - F-018 Settings — _not yet written_
-- F-019 Latest Apple Pencil compatibility — _not yet written_
+- F-047 Insert image into note — _not yet written_
+- F-048 Lock note — _not yet written_
+- F-049 Note thumbnail — _not yet written_
 
 ## Account & Cloud
 
@@ -76,6 +79,5 @@ Uses the custom backend, not iCloud / CloudKit.
 
 - F-042 Handwriting playback viewing — _not yet written_
 - F-043 Collaborative notes — _not yet written_
-- F-044 Direct message — _not yet written_
 - F-045 Themed events — _not yet written_
 - F-046 Drift bottle — _not yet written_

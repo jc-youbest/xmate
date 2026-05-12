@@ -31,6 +31,8 @@ the foundation on top of which sharing is built.
 - Primary dev device: iPad 8th generation (iPadOS 18.5) + Apple Pencil 1.
 - Build machine: iMac.
 - Must remain compatible with the latest iPad and the latest Apple Pencil.
+  Pencil 2 / USB-C / Pro features (hover preview, double-tap, squeeze) are
+  surfaced where the hardware supports them and silently ignored otherwise.
   Pencil-Pro-only features are nice-to-have, not required.
 
 ## Conventions
