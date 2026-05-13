@@ -25,6 +25,18 @@ remaining compatible with Apple Pencil 1st generation.
 - [`docs/backend/`](docs/backend/) — backend module catalog.
 - [`docs/glossary.md`](docs/glossary.md) — shared vocabulary.
 
+## Test Hardware
+
+Primary development and test setup:
+
+- iPadOS 18.5 (may be upgraded)
+- iPad (8th generation)
+- Apple Pencil (1st generation)
+
+The app must also remain compatible with the latest iPad and the latest
+Apple Pencil. Full hardware constraints, including how newer-Pencil
+features should be surfaced, are documented in [`CLAUDE.md`](CLAUDE.md).
+
 ## Development Setup
 
 To be filled in once the Xcode project is created.
