@@ -8,7 +8,7 @@ The Xcode project for the iOS app.
 |---|---|
 | Project name | `xmate` |
 | Bundle Identifier | `com.cwc.xmate` |
-| Deployment target | iPadOS 17.0 |
+| Deployment target | iPadOS 17.6 |
 | Device family | iPad only |
 | Interface | SwiftUI |
 | Language | Swift |
