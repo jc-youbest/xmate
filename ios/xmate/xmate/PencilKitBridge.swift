@@ -1,23 +1,88 @@
 // C-002 PencilKitBridge
 //
-// SwiftUI wrapper around PKCanvasView, plus the system PKToolPicker as
-// a temporary v0 tool UI.
+// SwiftUI wrapper around PKCanvasView. Hosts the canvas, attaches the
+// system PKToolPicker as a v0 tool UI, and auto-persists strokes to
+// Documents/canvas.drawing using a debounced background-write scheme.
 //
-// PKToolPicker delivers pen / pencil / marker / highlighter selection
-// (F-002), color picking (F-003), stroke thickness (F-004), eraser
-// (F-005), lasso (F-006), and undo / redo (F-007) — all from Apple's
-// built-in palette. When the custom U-015 PenToolbar and its children
-// are built per F-002..F-007, this PKToolPicker stand-in goes away.
-//
-// Strokes are still not persisted; closing the app discards them.
-// Persistence comes with F-011 Note CRUD.
+// PKToolPicker delivers the v0 versions of F-002..F-007 in one shot.
+// When F-011 Note CRUD proper is built, this file's persistence logic
+// is replaced by a call into C-001 NoteStore.
 
 import SwiftUI
 import PencilKit
+import UIKit
 
 struct PencilKitBridge: UIViewRepresentable {
-    final class Coordinator {
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
         var toolPicker: PKToolPicker?
+        weak var canvas: PKCanvasView?
+        private var saveWorkItem: DispatchWorkItem?
+        private var backgroundObserver: NSObjectProtocol?
+
+        /// Serial queue for disk writes. Ensures saves don't race each
+        /// other; the latest serialized drawing always wins.
+        private static let saveQueue = DispatchQueue(
+            label: "xmate.canvas.save",
+            qos: .utility
+        )
+
+        static var canvasFileURL: URL {
+            FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("canvas.drawing")
+        }
+
+        override init() {
+            super.init()
+            // Force-save when the app moves to background so we never
+            // lose strokes when the user backgrounds or quits.
+            backgroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.willResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.saveNow()
+            }
+        }
+
+        deinit {
+            if let observer = backgroundObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+
+        // PKCanvasViewDelegate
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            scheduleSave()
+        }
+
+        /// Coalesce rapid changes: cancel any pending save and schedule
+        /// a new one 250 ms ahead. Continued writing keeps postponing;
+        /// only after 250 ms of no further change does the save fire.
+        private func scheduleSave() {
+            saveWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.saveNow()
+            }
+            saveWorkItem = workItem
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + 0.25,
+                execute: workItem
+            )
+        }
+
+        /// Capture the current drawing on the main thread, then encode
+        /// and write on a background serial queue so writing is never
+        /// blocked and concurrent saves don't race.
+        private func saveNow() {
+            guard let canvas = canvas else { return }
+            let drawing = canvas.drawing  // PKDrawing is a value type
+            let url = Coordinator.canvasFileURL
+            Coordinator.saveQueue.async {
+                let data = StrokeSerializer.encode(drawing)
+                try? data.write(to: url, options: .atomic)
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -33,6 +98,16 @@ struct PencilKitBridge: UIViewRepresentable {
         canvas.overrideUserInterfaceStyle = .light
         canvas.drawingPolicy = .anyInput
         canvas.tool = PKInkingTool(.pen, color: .black, width: 4)
+
+        // Wire up persistence: hand the canvas to the coordinator and
+        // restore any previously saved drawing.
+        canvas.delegate = context.coordinator
+        context.coordinator.canvas = canvas
+        if let savedData = try? Data(contentsOf: Coordinator.canvasFileURL),
+           let drawing = StrokeSerializer.decode(savedData) {
+            canvas.drawing = drawing
+        }
+
         return canvas
     }
 
@@ -43,11 +118,8 @@ struct PencilKitBridge: UIViewRepresentable {
         uiView.drawingPolicy = .anyInput
 
         // Attach the system tool picker once the canvas is in a window.
-        // Dispatched to the next runloop tick because, on real devices,
-        // updateUIView may run before SwiftUI's hosting layout has
-        // actually placed the view live on screen — and PKToolPicker
-        // only attaches if its first-responder canvas is fully laid out
-        // in a key window.
+        // Dispatched to the next runloop tick so SwiftUI's hosting view
+        // is fully laid out before the picker tries to attach.
         DispatchQueue.main.async {
             guard uiView.window != nil,
                   context.coordinator.toolPicker == nil else {
