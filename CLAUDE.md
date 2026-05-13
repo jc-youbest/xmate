@@ -56,6 +56,10 @@ respective catalog before being referenced from a feature.
   When a commit changes UI / components / backend / features, the message
   should briefly state WHY, not only WHAT. The commit log is the substitute
   for an ADR; future spelunking uses `git log --grep=...`.
+- Code-to-ID mapping: every Swift file that implements a UI node (U-XXX)
+  or component (C-XXX) starts with a one-line header comment, e.g.
+  `// U-023 Canvas` or `// C-002 PencilKitBridge`. This makes catalog IDs
+  greppable from inside the code.
 
 ### Feature File Format
 

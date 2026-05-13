@@ -23,3 +23,22 @@ When user touches U-023 Canvas with a finger:
 When user taps U-012 BackButton on U-011 EditorTopBar:
 - C-001 NoteStore flushes pending writes.
 - App returns to U-002 NoteListScreen.
+
+## Initial Implementation (v0)
+
+Before the full flow above can be implemented, a minimal subset is built
+standalone to validate the development pipeline.
+
+v0 scope:
+- The app launches directly into U-023 Canvas (U-002 NoteListScreen,
+  U-010 NoteEditorScreen, U-011 EditorTopBar, U-015 PenToolbar, and
+  U-024 PageNavigator are not yet present).
+- C-002 PencilKitBridge hosts a full-screen PKCanvasView.
+- A default pen with a default color and width is active.
+- Strokes are not persisted — closing the app loses them. C-001 NoteStore
+  and C-003 StrokeSerializer are deferred.
+
+This subset validates the Xcode project setup, iPad 8 deployment, and
+Apple Pencil 1 input. Persistence, navigation, and tool-switching parts
+of the flow above will be added in subsequent iterations alongside
+F-011 Note CRUD and F-002 Pen Tools.

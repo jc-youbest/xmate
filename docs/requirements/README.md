@@ -16,7 +16,7 @@ Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)`
 
 ## Foundation — Local Handwriting & Notes
 
-- F-001 Handwriting canvas — [`F-001-handwriting-canvas.md`](F-001-handwriting-canvas.md) (Draft)
+- F-001 Handwriting canvas — [`F-001-handwriting-canvas.md`](F-001-handwriting-canvas.md) (In Design)
 - F-002 Pen tools — [`F-002-pen-tools.md`](F-002-pen-tools.md) (Draft)
 - F-003 Color picker — [`F-003-color-picker.md`](F-003-color-picker.md) (Draft)
 - F-004 Stroke thickness — [`F-004-stroke-thickness.md`](F-004-stroke-thickness.md) (Draft)
