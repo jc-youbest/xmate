@@ -1,5 +1,10 @@
 # F-009 Multi-page Note
 
+**Status: Deprecated.** Superseded by F-051 Multi-page Stationery and Page
+Turning. The multi-page model now centres on stationery pages and a
+page-turn interaction rather than blank notebook pages. Kept for history;
+do not implement.
+
 A note can have multiple pages; the user can add, switch, delete, and reorder them.
 
 ## Flow

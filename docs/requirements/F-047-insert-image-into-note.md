@@ -1,5 +1,10 @@
 # F-047 Insert Image into Note
 
+**Status: Deprecated.** Superseded by F-050 Create Single-page Personalized
+Stationery. Images are now placed as photo frames during a compose phase
+that is locked before handwriting begins, rather than inserted into a live
+note. Kept for history; do not implement.
+
 The user inserts an image into the current page; the image becomes a movable layer beneath handwriting.
 
 ## Flow

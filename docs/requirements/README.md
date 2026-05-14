@@ -12,7 +12,7 @@ New features get a new `F-XXX` and a file copied from
 ID scheme: F-XXX, monotonic, never reused. Withdrawn IDs are not reissued —
 gaps in the sequence are normal.
 
-Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)` < `(Shipped)`.
+Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)` < `(Shipped)`. Terminal states (off the progression): `(Deprecated)`, `(Cancelled)`.
 
 ## Foundation — Local Handwriting & Notes
 
@@ -23,9 +23,9 @@ Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)`
 - F-005 Eraser — [`F-005-eraser.md`](F-005-eraser.md) (Draft)
 - F-006 Lasso selection — [`F-006-lasso-selection.md`](F-006-lasso-selection.md) (Draft)
 - F-007 Undo / redo — [`F-007-undo-redo.md`](F-007-undo-redo.md) (Draft)
-- F-008 Canvas zoom and pan — [`F-008-canvas-zoom-and-pan.md`](F-008-canvas-zoom-and-pan.md) (Draft)
-- F-009 Multi-page note — [`F-009-multi-page-note.md`](F-009-multi-page-note.md) (Draft)
-- F-010 Paper styles — [`F-010-paper-styles.md`](F-010-paper-styles.md) (Draft)
+- F-008 Canvas zoom and pan — [`F-008-canvas-zoom-and-pan.md`](F-008-canvas-zoom-and-pan.md) (Cancelled)
+- F-009 Multi-page note — [`F-009-multi-page-note.md`](F-009-multi-page-note.md) (Deprecated — see F-051)
+- F-010 Paper styles — [`F-010-paper-styles.md`](F-010-paper-styles.md) (Deprecated — see F-050)
 - F-011 Note CRUD — [`F-011-note-crud.md`](F-011-note-crud.md) (Draft)
 - F-012 Folder organization — [`F-012-folder-organization.md`](F-012-folder-organization.md) (Draft)
 - F-013 Tags — [`F-013-tags.md`](F-013-tags.md) (Draft)
@@ -34,9 +34,11 @@ Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)`
 - F-016 Export to PDF — [`F-016-export-to-pdf.md`](F-016-export-to-pdf.md) (Draft)
 - F-017 Export to image — [`F-017-export-to-image.md`](F-017-export-to-image.md) (Draft)
 - F-018 Settings — [`F-018-settings.md`](F-018-settings.md) (Draft)
-- F-047 Insert image into note — [`F-047-insert-image-into-note.md`](F-047-insert-image-into-note.md) (Draft)
+- F-047 Insert image into note — [`F-047-insert-image-into-note.md`](F-047-insert-image-into-note.md) (Deprecated — see F-050)
 - F-048 Lock note — [`F-048-lock-note.md`](F-048-lock-note.md) (Draft)
 - F-049 Note thumbnail — [`F-049-note-thumbnail.md`](F-049-note-thumbnail.md) (Draft)
+- F-050 Create single-page personalized stationery — [`F-050-create-single-page-personalized-stationery.md`](F-050-create-single-page-personalized-stationery.md) (Draft)
+- F-051 Multi-page stationery and page turning — [`F-051-multi-page-stationery-and-page-turning.md`](F-051-multi-page-stationery-and-page-turning.md) (Draft)
 
 ## Account & Cloud
 

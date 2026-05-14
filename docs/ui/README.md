@@ -98,3 +98,30 @@ optional; omit when the name is self-explanatory.
     - U-067 ExploreGrid
   - U-082 EventScreen — details of an active themed event
   - U-084 DriftBottleScreen — inbox of received bottles
+  - U-085 StationeryComposerScreen — compose phase of a stationery page (F-050)
+    - U-086 BackgroundColorPicker
+    - U-087 LineStylePicker — blank / ruled / grid / dot
+    - U-088 LayoutPresetPicker — none / photo-left / photo-right / photo-top / photo-bottom
+    - U-089 AddPhotoButton
+    - U-090 PhotoFrame — movable / rotatable / scalable photo container on the page
+    - U-091 GenerateButton
+    - U-092 GenerateConfirmDialog — modal: warns generation is final and irreversible
+  - U-093 PageIndicator — current page position in a document, e.g. "1 / 3" (F-051)
+  - U-094 PageTurnControl — next / previous page (F-051)
+  - U-095 AddPageButton — appends a new stationery page (F-051)
+  - U-096 RemovePageButton — removes the current page (F-051)
+
+## Pending Reconciliation
+
+The personalized-stationery model (F-050, F-051) introduces a compose phase
+(U-085 and its children) and a write phase with page turning
+(U-093..U-096). These were added after the original editor nodes
+(U-010 NoteEditorScreen, U-023 Canvas, U-024 PageNavigator), which predate
+the stationery model and assume a single scrollable note.
+
+When the editor is reworked for the stationery model, the two structures
+will be reconciled — including a proper screen-level home for U-093..U-096.
+That rework must be discussed explicitly, because U-023 Canvas is referenced
+by the already-implemented F-001, and the nodes U-031 PaperStylePicker,
+U-041 InsertImageButton, and U-042 ImageOverlay belong to the now-deprecated
+F-010 / F-047.
