@@ -5,13 +5,18 @@
 
 ## Project: xmate
 
-A handwriting-first iPad app for taking notes and sharing handwritten work
-with pen pals. Two products in one: a polished notes app comparable to Apple
-Notes, plus a social layer where users exchange handwritten pages — including
-sending handwritten letters with embedded images to friends.
+A handwriting-first iPad app built on a personalized-stationery model. A
+document is an ordered sequence of pages. Each page is a fixed sheet the
+user first composes — background color, line style, and photos in movable
+frames — then locks with a one-way "generate" step, after which it can be
+written on by hand. The user fills a page and turns to the next, like real
+letter paper. Each page is fixed: no zoom, no pan, no infinite canvas. xmate
+is digital stationery — not a whiteboard, not an Apple Notes clone.
 
-The social/sharing layer is the product's primary value. The notes app is
-the foundation on top of which sharing is built.
+Two products in one: the stationery authoring experience above, plus a
+social layer where users share their documents with pen pals. The social
+layer is the product's primary value; authoring is the foundation it is
+built on.
 
 ## Tech Stack
 
