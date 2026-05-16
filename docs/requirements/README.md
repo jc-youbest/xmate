@@ -39,6 +39,7 @@ Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)`
 - F-049 Note thumbnail — [`F-049-note-thumbnail.md`](F-049-note-thumbnail.md) (Draft)
 - F-050 Create single-page personalized stationery — [`F-050-create-single-page-personalized-stationery.md`](F-050-create-single-page-personalized-stationery.md) (Draft)
 - F-051 Multi-page stationery and page turning — [`F-051-multi-page-stationery-and-page-turning.md`](F-051-multi-page-stationery-and-page-turning.md) (Draft)
+- F-052 Stationery library — [`F-052-stationery-library.md`](F-052-stationery-library.md) (Draft)
 
 ## Account & Cloud
 

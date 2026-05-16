@@ -23,7 +23,7 @@ built on.
 - Platform: iPadOS, latest two major versions supported.
 - Language: Swift; SwiftUI for UI, UIKit where SwiftUI gaps exist.
 - Drawing: PencilKit (Apple's official handwriting framework).
-- Local storage: TBD (Core Data or SwiftData).
+- Local storage: Core Data, stored in `Library/Application Support/` (app-private, not exposed to the Files app).
 - Backend: a self-hosted custom backend, NOT CloudKit. Language, database,
   and hosting choices are deferred until needed.
 - Authentication: multi-provider social login — Sign in with Apple (required

@@ -26,19 +26,16 @@ When user taps U-012 BackButton on U-011 EditorTopBar:
 
 ## Initial Implementation (v0)
 
-Before the full flow above can be implemented, a minimal subset is built
-standalone to validate the development pipeline.
+v0 (shipped): the app launches directly into a full-screen PKCanvasView
+hosted by C-002 PencilKitBridge — no U-002 NoteListScreen, no U-010
+NoteEditorScreen, no navigation. The system PKToolPicker is attached as a
+temporary tool UI, covering F-002..F-007 in their v0 form. Strokes are
+auto-saved and restored across launches; see F-011's Initial
+Implementation. This subset validated the Xcode project setup, iPad 8
+deployment, and Apple Pencil 1 input.
 
-v0 scope:
-- The app launches directly into U-023 Canvas (U-002 NoteListScreen,
-  U-010 NoteEditorScreen, U-011 EditorTopBar, U-015 PenToolbar, and
-  U-024 PageNavigator are not yet present).
-- C-002 PencilKitBridge hosts a full-screen PKCanvasView.
-- A default pen with a default color and width is active.
-- Strokes are not persisted — closing the app loses them. C-001 NoteStore
-  and C-003 StrokeSerializer are deferred.
-
-This subset validates the Xcode project setup, iPad 8 deployment, and
-Apple Pencil 1 input. Persistence, navigation, and tool-switching parts
-of the flow above will be added in subsequent iterations alongside
-F-011 Note CRUD and F-002 Pen Tools.
+Superseded by the stationery model: under F-050 / F-051 the canvas is the
+write phase of a locked page inside a document, not a standalone screen,
+and the v0 single-file persistence is replaced by F-011's v1 Core Data
+store. F-001's own behaviour — drawing strokes on a page — carries
+forward unchanged.

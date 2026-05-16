@@ -109,19 +109,24 @@ optional; omit when the name is self-explanatory.
   - U-093 PageIndicator — current page position in a document, e.g. "1 / 3" (F-051)
   - U-094 PageTurnControl — next / previous page (F-051)
   - U-095 AddPageButton — appends a new stationery page (F-051)
+    - U-097 AddPageSourceMenu — modal: compose new / load from library (F-051)
   - U-096 RemovePageButton — removes the current page (F-051)
+  - U-098 StationeryLibraryScreen — browse and pick locked stationery (F-052)
+    - U-099 StationeryLibraryItem — one library entry, with preview
+      - U-100 StationeryLibraryItemMenu — modal: rename, delete
 
 ## Pending Reconciliation
 
-The personalized-stationery model (F-050, F-051) introduces a compose phase
-(U-085 and its children) and a write phase with page turning
-(U-093..U-096). These were added after the original editor nodes
-(U-010 NoteEditorScreen, U-023 Canvas, U-024 PageNavigator), which predate
-the stationery model and assume a single scrollable note.
+The personalized-stationery model (F-050, F-051, F-052) introduces a
+compose phase (U-085 and its children), a write phase with page turning
+(U-093..U-097), and a library screen (U-098..U-100). These were added
+after the original editor nodes (U-010 NoteEditorScreen, U-023 Canvas,
+U-024 PageNavigator), which predate the stationery model and assume a
+single scrollable note.
 
 When the editor is reworked for the stationery model, the two structures
-will be reconciled — including a proper screen-level home for U-093..U-096.
-That rework must be discussed explicitly, because U-023 Canvas is referenced
-by the already-implemented F-001, and the nodes U-031 PaperStylePicker,
-U-041 InsertImageButton, and U-042 ImageOverlay belong to the now-deprecated
-F-010 / F-047.
+will be reconciled — including a proper screen-level home for
+U-093..U-097. That rework must be discussed explicitly, because U-023
+Canvas is referenced by the already-implemented F-001, and the nodes
+U-031 PaperStylePicker, U-041 InsertImageButton, and U-042 ImageOverlay
+belong to the now-deprecated F-010 / F-047.
