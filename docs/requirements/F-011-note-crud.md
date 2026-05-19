@@ -29,7 +29,7 @@ v0 (superseded): one drawing auto-saved to a single file,
 Documents/canvas.drawing — no document list, no CRUD UI, just persistence
 of one canvas. Built before the stationery model existed.
 
-v1 (current target): a Core Data store in Library/Application Support,
-replacing the v0 single file. The data structure it holds is defined in
-code, not here. v1 delivers the storage layer only; the CRUD flow above
-(document list, rename, delete) is still ahead.
+v1 (shipped): a Core Data store in Library/Application Support, replacing
+the v0 single file. The data structure it holds is defined in code, not
+here. v1 delivers the storage layer only — the CRUD flow above (document
+list, rename, delete) is still ahead.

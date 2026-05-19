@@ -84,7 +84,7 @@ See `docs/requirements/_template.md` and `docs/requirements/F-001-handwriting-ca
 - `docs/components/README.md` — iOS component catalog (C-XXX).
 - `docs/backend/README.md` — backend module catalog (S-XXX).
 - `docs/glossary.md` — shared terminology.
-- `ios/` — Xcode project (created later).
+- `ios/` — Xcode project.
 - `backend/` — backend code (created later).
 - `assets/` — design and reference assets.
 - `scripts/` — utility scripts.
