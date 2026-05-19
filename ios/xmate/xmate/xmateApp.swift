@@ -12,6 +12,7 @@ struct xmateApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(NoteStore.shared)
         }
     }
 }

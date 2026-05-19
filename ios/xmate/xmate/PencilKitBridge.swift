@@ -1,36 +1,28 @@
 // C-002 PencilKitBridge
 //
-// SwiftUI wrapper around PKCanvasView. Hosts the canvas, attaches the
-// system PKToolPicker as a v0 tool UI, and auto-persists strokes to
-// Documents/canvas.drawing using a debounced background-write scheme.
+// SwiftUI wrapper around PKCanvasView, with the system PKToolPicker
+// attached as a temporary v0 tool UI.
 //
 // PKToolPicker delivers the v0 versions of F-002..F-007 in one shot.
-// When F-011 Note CRUD proper is built, this file's persistence logic
-// is replaced by a call into C-001 NoteStore.
+// Stroke persistence routes through C-001 NoteStore (Core Data) per
+// F-011's Initial Implementation v1 — no standalone file.
 
 import SwiftUI
 import PencilKit
 import UIKit
 
 struct PencilKitBridge: UIViewRepresentable {
+    let page: Page
+    let store: NoteStore
+
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         var toolPicker: PKToolPicker?
         weak var canvas: PKCanvasView?
+        var page: Page?
+        var store: NoteStore?
+
         private var saveWorkItem: DispatchWorkItem?
         private var backgroundObserver: NSObjectProtocol?
-
-        /// Serial queue for disk writes. Ensures saves don't race each
-        /// other; the latest serialized drawing always wins.
-        private static let saveQueue = DispatchQueue(
-            label: "xmate.canvas.save",
-            qos: .utility
-        )
-
-        static var canvasFileURL: URL {
-            FileManager.default
-                .urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("canvas.drawing")
-        }
 
         override init() {
             super.init()
@@ -71,17 +63,15 @@ struct PencilKitBridge: UIViewRepresentable {
             )
         }
 
-        /// Capture the current drawing on the main thread, then encode
-        /// and write on a background serial queue so writing is never
-        /// blocked and concurrent saves don't race.
+        /// Encode the current drawing on the main thread (fast — it's
+        /// just an in-memory blob), then hand off to NoteStore which
+        /// dispatches the disk write to its own background queue.
         private func saveNow() {
-            guard let canvas = canvas else { return }
-            let drawing = canvas.drawing  // PKDrawing is a value type
-            let url = Coordinator.canvasFileURL
-            Coordinator.saveQueue.async {
-                let data = StrokeSerializer.encode(drawing)
-                try? data.write(to: url, options: .atomic)
-            }
+            guard let canvas = canvas,
+                  let page = page,
+                  let store = store else { return }
+            let data = StrokeSerializer.encode(canvas.drawing)
+            store.savePageDrawing(data, page: page)
         }
     }
 
@@ -99,11 +89,13 @@ struct PencilKitBridge: UIViewRepresentable {
         canvas.drawingPolicy = .anyInput
         canvas.tool = PKInkingTool(.pen, color: .black, width: 4)
 
-        // Wire up persistence: hand the canvas to the coordinator and
-        // restore any previously saved drawing.
+        // Wire up persistence: hand the canvas + page + store to the
+        // coordinator and restore any previously saved drawing.
         canvas.delegate = context.coordinator
         context.coordinator.canvas = canvas
-        if let savedData = try? Data(contentsOf: Coordinator.canvasFileURL),
+        context.coordinator.page = page
+        context.coordinator.store = store
+        if let savedData = page.drawingData,
            let drawing = StrokeSerializer.decode(savedData) {
             canvas.drawing = drawing
         }
@@ -116,6 +108,8 @@ struct PencilKitBridge: UIViewRepresentable {
         // take effect when it's set before the view enters a window
         // hierarchy; setting it again here ensures it sticks.
         uiView.drawingPolicy = .anyInput
+        context.coordinator.page = page
+        context.coordinator.store = store
 
         // Attach the system tool picker once the canvas is in a window.
         // Dispatched to the next runloop tick so SwiftUI's hosting view
