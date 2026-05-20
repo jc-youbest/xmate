@@ -14,9 +14,8 @@ When user selects a tool in U-016 PenToolPicker:
 When user draws on U-023 Canvas after selecting a tool:
 - The stroke uses the selected tool's characteristics (pencil shows texture, marker is opaque flat, highlighter is translucent).
 
-## Initial Implementation (v0)
+## Implementation Status
 
-v0 (shipped): pen, pencil, marker, and highlighter selection are delivered
-by the system PKToolPicker that F-001's v0 attaches to U-023 Canvas. The
-custom U-015 PenToolbar / U-016 PenToolPicker described in the flow above
-is still ahead.
+Pen, pencil, marker, and highlighter selection are delivered by the system
+PKToolPicker that F-001 attaches to the canvas. The custom U-015 PenToolbar
+/ U-016 PenToolPicker described in the flow above is still ahead.

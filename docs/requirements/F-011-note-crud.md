@@ -23,13 +23,13 @@ When user picks "delete" in U-032 NoteContextMenu:
 - App asks for confirmation.
 - C-001 NoteStore removes the Note.
 
-## Initial Implementation
+## Implementation Status
 
-v0 (superseded): one drawing auto-saved to a single file,
-Documents/canvas.drawing — no document list, no CRUD UI, just persistence
-of one canvas. Built before the stationery model existed.
+Persistence was first done with a single file (Documents/canvas.drawing)
+and has since been replaced by a Core Data store in
+Library/Application Support. The data structure it holds is defined in
+code, not here.
 
-v1 (shipped): a Core Data store in Library/Application Support, replacing
-the v0 single file. The data structure it holds is defined in code, not
-here. v1 delivers the storage layer only — the CRUD flow above (document
-list, rename, delete) is still ahead.
+What exists today is the storage layer only — the CRUD flow above
+(document list, rename, delete) is still ahead. The store already models a
+multi-page document, which roadmap stage v0 builds the UI for.

@@ -79,6 +79,7 @@ See `docs/requirements/_template.md` and `docs/requirements/F-001-handwriting-ca
 
 ## Where Things Live
 
+- `docs/roadmap.md` — the development path: stages v0..v5.
 - `docs/requirements/` — feature index and per-feature flow specs (F-XXX).
 - `docs/ui/README.md` — UI containment tree (U-XXX).
 - `docs/components/README.md` — iOS component catalog (C-XXX).

@@ -24,18 +24,15 @@ When user taps U-012 BackButton on U-011 EditorTopBar:
 - C-001 NoteStore flushes pending writes.
 - App returns to U-002 NoteListScreen.
 
-## Initial Implementation (v0)
+## Implementation Status
 
-v0 (shipped): the app launches directly into a full-screen PKCanvasView
-hosted by C-002 PencilKitBridge — no U-002 NoteListScreen, no U-010
-NoteEditorScreen, no navigation. The system PKToolPicker is attached as a
-temporary tool UI, covering F-002..F-007 in their v0 form. Strokes are
-auto-saved and restored across launches; see F-011's Initial
-Implementation. This subset validated the Xcode project setup, iPad 8
-deployment, and Apple Pencil 1 input.
+The app currently launches straight into a full-screen PKCanvasView hosted
+by C-002 PencilKitBridge — no note list, no editor chrome, no navigation.
+The system PKToolPicker is attached as a temporary tool UI (it covers
+F-002..F-007). Strokes auto-save and reload across launches through
+C-001 NoteStore; see F-011's Implementation Status.
 
-Superseded by the stationery model: under F-050 / F-051 the canvas is the
-write phase of a locked page inside a document, not a standalone screen,
-and the v0 single-file persistence is replaced by F-011's v1 Core Data
-store. F-001's own behaviour — drawing strokes on a page — carries
-forward unchanged.
+Still ahead: the canvas is not yet hosted inside the multi-page document
+structure of roadmap stage v0, and the navigation / editor flow described
+above is not built. F-001's core behaviour — drawing strokes on a page —
+does not change as that structure is added.
