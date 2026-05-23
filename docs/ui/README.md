@@ -59,8 +59,6 @@ optional; omit when the name is self-explanatory.
       - U-021 UndoButton
       - U-022 RedoButton
       - U-041 InsertImageButton
-    - U-023 Canvas — active drawing surface
-      - U-042 ImageOverlay — image layer beneath strokes
     - U-024 PageNavigator
       - U-028 PageThumbnail
         - U-030 PageContextMenu — modal: delete, duplicate, reorder
@@ -106,27 +104,44 @@ optional; omit when the name is self-explanatory.
     - U-090 PhotoFrame — movable / rotatable / scalable photo container on the page
     - U-091 GenerateButton
     - U-092 GenerateConfirmDialog — modal: warns generation is final and irreversible
-  - U-093 PageIndicator — current page position in a document, e.g. "1 / 3" (F-051)
-  - U-094 PageTurnControl — next / previous page (F-051)
-  - U-095 AddPageButton — appends a new stationery page (F-051)
-    - U-097 AddPageSourceMenu — modal: compose new / load from library (F-051)
-  - U-096 RemovePageButton — removes the current page (F-051)
+  - U-101 WritingScreen — writing mode; the app opens straight into it
+    - U-102 WritingTopBar — thin top bar
+      - U-093 PageIndicator — current page position in a document, e.g. "1 / 3" (F-051)
+      - U-095 AddPageButton — appends a new blank page (F-051)
+      - U-103 WritingOverflowMenu — modal: delete page, delete document (F-051 / F-011)
+    - U-023 Canvas — active drawing surface
+    - U-104 WritingSidebar — reserved side area for later inbox / history features; the page rescales to the space it leaves free (F-053)
   - U-098 StationeryLibraryScreen — browse and pick locked stationery (F-052)
     - U-099 StationeryLibraryItem — one library entry, with preview
       - U-100 StationeryLibraryItemMenu — modal: rename, delete
 
+## Retired Nodes
+
+IDs are never reused. These nodes were defined for an earlier design and
+are kept only for history.
+
+- U-094 PageTurnControl — page turning is now a finger swipe gesture, with
+  no on-screen control.
+- U-096 RemovePageButton — removing a page is now an item in U-103
+  WritingOverflowMenu.
+- U-097 AddPageSourceMenu — v1 add-page appends a blank page; choosing a
+  stationery source returns with the stationery model in v2.
+- U-042 ImageOverlay — belonged to the deprecated F-047; the writing-mode
+  media of F-054 will define its own nodes.
+
 ## Pending Reconciliation
 
-The personalized-stationery model (F-050, F-051, F-052) introduces a
-compose phase (U-085 and its children), a write phase with page turning
-(U-093..U-097), and a library screen (U-098..U-100). These were added
-after the original editor nodes (U-010 NoteEditorScreen, U-023 Canvas,
-U-024 PageNavigator), which predate the stationery model and assume a
-single scrollable note.
+The v1 writing mode now has its screen-level home: U-101 WritingScreen with
+U-102 WritingTopBar, U-103 WritingOverflowMenu, and U-104 WritingSidebar,
+and with U-023 Canvas, U-093 PageIndicator, and U-095 AddPageButton
+re-homed under it.
 
-When the editor is reworked for the stationery model, the two structures
-will be reconciled — including a proper screen-level home for
-U-093..U-097. That rework must be discussed explicitly, because U-023
-Canvas is referenced by the already-implemented F-001, and the nodes
-U-031 PaperStylePicker, U-041 InsertImageButton, and U-042 ImageOverlay
-belong to the now-deprecated F-010 / F-047.
+Still unreconciled are the original single-note editor nodes — U-010
+NoteEditorScreen, U-011 EditorTopBar and its children, U-015 PenToolbar and
+its children, U-024 PageNavigator and its children, and U-031
+PaperStylePicker. They predate the current model, were never built, and
+overlap newer structures: the system PKToolPicker now covers F-002..F-007,
+U-024 belonged to the deprecated F-009, U-031 belonged to the deprecated
+F-010, and U-041 belonged to the deprecated F-047. Sorting them out is a
+separate cleanup, to be done when those areas are next touched; it does not
+block v1.

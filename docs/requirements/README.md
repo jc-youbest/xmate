@@ -38,8 +38,10 @@ Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)`
 - F-048 Lock note — [`F-048-lock-note.md`](F-048-lock-note.md) (Draft)
 - F-049 Note thumbnail — [`F-049-note-thumbnail.md`](F-049-note-thumbnail.md) (Draft)
 - F-050 Create single-page personalized stationery — [`F-050-create-single-page-personalized-stationery.md`](F-050-create-single-page-personalized-stationery.md) (Draft)
-- F-051 Multi-page stationery and page turning — [`F-051-multi-page-stationery-and-page-turning.md`](F-051-multi-page-stationery-and-page-turning.md) (Draft)
+- F-051 Multi-page document and page turning — [`F-051-multi-page-document-and-page-turning.md`](F-051-multi-page-document-and-page-turning.md) (In Design)
 - F-052 Stationery library — [`F-052-stationery-library.md`](F-052-stationery-library.md) (Draft)
+- F-053 Page rotation and zoom — [`F-053-page-rotation-and-zoom.md`](F-053-page-rotation-and-zoom.md) (Draft)
+- F-054 Insert media while writing — [`F-054-insert-media-while-writing.md`](F-054-insert-media-while-writing.md) (Draft)
 
 ## Account & Cloud
 

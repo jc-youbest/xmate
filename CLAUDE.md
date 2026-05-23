@@ -10,7 +10,7 @@ document is an ordered sequence of pages. Each page is a fixed sheet the
 user first composes — background color, line style, and photos in movable
 frames — then locks with a one-way "generate" step, after which it can be
 written on by hand. The user fills a page and turns to the next, like real
-letter paper. Each page is fixed: no zoom, no pan, no infinite canvas. xmate
+letter paper. Each page is one bounded sheet of fixed size — it can be zoomed and follows device rotation, but it is never an infinite or pannable canvas. xmate
 is digital stationery — not a whiteboard, not an Apple Notes clone.
 
 Two products in one: the stationery authoring experience above, plus a
@@ -79,7 +79,7 @@ See `docs/requirements/_template.md` and `docs/requirements/F-001-handwriting-ca
 
 ## Where Things Live
 
-- `docs/roadmap.md` — the development path: stages v0..v5.
+- `docs/roadmap.md` — the development path: stages v0..v6.
 - `docs/requirements/` — feature index and per-feature flow specs (F-XXX).
 - `docs/ui/README.md` — UI containment tree (U-XXX).
 - `docs/components/README.md` — iOS component catalog (C-XXX).
