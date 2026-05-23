@@ -94,7 +94,15 @@ See `docs/requirements/_template.md` and `docs/requirements/F-001-handwriting-ca
 
 When starting a new conversation, the user will typically say
 "Continue xmate. Read CLAUDE.md and <relevant doc>." Begin by reading
-those files. End each working session by writing decisions and updates back
-into the relevant markdown files — do not leave conclusions only in chat.
-When committing changes that involve a design decision, write the WHY into
+those files. Always also read `docs/requirements/README.md` — it is the
+feature inventory and status register; reading it keeps the feature
+catalog current without being explicitly asked.
+
+End each working session by writing decisions and updates back into the
+relevant markdown files — do not leave conclusions only in chat. When
+committing changes that involve a design decision, write the WHY into
 the commit message.
+
+After completing a coding increment, always remind the user to test on
+the primary dev device (iPad 8th generation + Apple Pencil 1st generation)
+before considering the increment done.

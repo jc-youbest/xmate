@@ -41,3 +41,32 @@ When user picks "delete document" in U-103 WritingOverflowMenu:
 In v1, U-095 AddPageButton appends a blank page. Adding a page from a
 saved stationery — the "compose new / load from library" path — returns
 with the stationery model in roadmap v2.
+
+## Implementation Status
+
+Implemented in roadmap stage v1 (first increment). Key decisions:
+
+- **WritingScreen (U-101)**: new `WritingScreen.swift`; `ContentView` is
+  now a thin shell that hosts it. The screen manages `[Page]` and
+  `currentPageIndex` as `@State`.
+
+- **Page identity**: `PencilKitBridge` is keyed with `.id(page.id)` (the
+  page's UUID). A page turn creates a fresh `PKCanvasView` loaded from
+  Core Data. `dismantleUIView` flushes pending strokes before teardown so
+  no drawing is lost on a fast swipe.
+
+- **Swipe gestures**: two `UISwipeGestureRecognizer`s (.up, .down) are
+  added to the `PKCanvasView` with `allowedTouchTypes = [.direct]`
+  (finger only). `drawingPolicy = .pencilOnly` means finger touches never
+  draw, so the two systems never conflict.
+
+- **Slide transition**: `WritingScreen` applies an `.asymmetric(.move)`
+  transition driven by a `turningForward` flag, giving a vertical page-
+  slide animation (0.18 s ease-in-out).
+
+- **Delete document (v1 stub)**: resets the document to a single blank
+  page instead of navigating to a note list. Will be replaced by F-011
+  navigation in v3.
+
+- **NoteStore additions**: `pages(of:)`, `appendPage(to:)`,
+  `deletePage(_:from:)`, `resetDocument(_:)`.
