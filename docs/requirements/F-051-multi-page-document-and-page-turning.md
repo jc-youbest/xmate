@@ -35,3 +35,9 @@ When user picks "delete page" in U-103 WritingOverflowMenu:
 
 When user picks "delete document" in U-103 WritingOverflowMenu:
 - The flow continues in F-011 Note CRUD.
+
+## Notes
+
+In v1, U-095 AddPageButton appends a blank page. Adding a page from a
+saved stationery — the "compose new / load from library" path — returns
+with the stationery model in roadmap v2.

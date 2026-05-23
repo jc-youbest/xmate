@@ -2,11 +2,11 @@
 //
 // Core Data store managing Document and Page entities. The persistent
 // store lives in Library/Application Support/, app-private and not
-// exposed to the Files app. This is F-011's v1 storage layer; it
-// replaces the v0 single-file canvas.drawing persistence.
+// exposed to the Files app. This is F-011's Core Data storage layer;
+// it replaced the earlier single-file canvas.drawing persistence.
 //
-// Scope in 3a: minimum API to support a single implicit "default
-// document" with one page. The CRUD UI (F-011's full flow) and the
+// Scope (roadmap stage v0): the minimum API for a single implicit
+// "default document" with one page. The CRUD UI (F-011's full flow) and the
 // Stationery / PhotoFrame / ImageAsset entities are still ahead.
 
 import Foundation
@@ -56,7 +56,7 @@ final class NoteStore: ObservableObject {
         container.viewContext
     }
 
-    // MARK: - Default document (3a scope)
+    // MARK: - Default document (roadmap stage v0)
 
     /// Load the default Document, creating it (with one empty page) on
     /// first launch.

@@ -1,11 +1,11 @@
 // C-002 PencilKitBridge
 //
 // SwiftUI wrapper around PKCanvasView, with the system PKToolPicker
-// attached as a temporary v0 tool UI.
+// attached as a temporary tool UI for roadmap stage v0.
 //
-// PKToolPicker delivers the v0 versions of F-002..F-007 in one shot.
-// Stroke persistence routes through C-001 NoteStore (Core Data) per
-// F-011's Initial Implementation v1 — no standalone file.
+// PKToolPicker covers F-002..F-007 in one shot. Stroke persistence
+// routes through C-001 NoteStore (Core Data); see F-011's
+// Implementation Status — no standalone file.
 
 import SwiftUI
 import PencilKit

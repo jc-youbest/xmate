@@ -23,6 +23,13 @@ When user picks "delete" in U-032 NoteContextMenu:
 - App asks for confirmation.
 - C-001 NoteStore removes the Note.
 
+When user picks "delete document" in U-103 WritingOverflowMenu:
+- App asks for confirmation.
+- On confirm, C-001 NoteStore removes the document and all its pages,
+  then creates a fresh document with one blank page. In roadmap stage
+  v1 there is one implicit document and no document list, so deleting it
+  is a clear-and-restart.
+
 ## Implementation Status
 
 Persistence was first done with a single file (Documents/canvas.drawing)
@@ -32,4 +39,4 @@ code, not here.
 
 What exists today is the storage layer only — the CRUD flow above
 (document list, rename, delete) is still ahead. The store already models a
-multi-page document, which roadmap stage v0 builds the UI for.
+multi-page document, which roadmap stage v1 builds the UI for.

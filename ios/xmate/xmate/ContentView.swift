@@ -1,9 +1,9 @@
-// Root view (3a).
+// Root view — roadmap stage v0.
 //
 // On appear, loads (or on first launch creates) the default Document
 // via C-001 NoteStore and hosts U-023 Canvas via C-002 PencilKitBridge
-// bound to that document's only page. Will be replaced by
-// U-002 NoteListScreen when F-011's CRUD UI lands.
+// bound to that document's only page. This is the v0 stand-in for
+// U-101 WritingScreen, which arrives with the v1 writing mode.
 
 import SwiftUI
 
