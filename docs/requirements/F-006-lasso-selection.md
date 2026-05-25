@@ -14,3 +14,10 @@ When user draws a closed loop on U-023 Canvas in lasso mode:
 When user picks an action in U-027 LassoActionMenu:
 - C-015 LassoEngine performs the action.
 - C-003 StrokeSerializer and C-001 NoteStore persist the result.
+
+## Implementation Status
+
+Lasso selection plus the standard transform / copy / delete actions are
+delivered by the system PKToolPicker that F-001 attaches to the canvas. The
+custom U-020 LassoButton and U-027 LassoActionMenu described in the flow
+above are still ahead.

@@ -5,20 +5,25 @@
 
 ## Project: xmate
 
-A handwriting-first iPad app for taking notes and sharing handwritten work
-with pen pals. Two products in one: a polished notes app comparable to Apple
-Notes, plus a social layer where users exchange handwritten pages — including
-sending handwritten letters with embedded images to friends.
+A handwriting-first iPad app built on a personalized-stationery model. A
+document is an ordered sequence of pages. Each page is a fixed sheet the
+user first composes — background color, line style, and photos in movable
+frames — then locks with a one-way "generate" step, after which it can be
+written on by hand. The user fills a page and turns to the next, like real
+letter paper. Each page is one bounded sheet of fixed size — it can be zoomed and follows device rotation, but it is never an infinite or pannable canvas. xmate
+is digital stationery — not a whiteboard, not an Apple Notes clone.
 
-The social/sharing layer is the product's primary value. The notes app is
-the foundation on top of which sharing is built.
+Two products in one: the stationery authoring experience above, plus a
+social layer where users share their documents with pen pals. The social
+layer is the product's primary value; authoring is the foundation it is
+built on.
 
 ## Tech Stack
 
 - Platform: iPadOS, latest two major versions supported.
 - Language: Swift; SwiftUI for UI, UIKit where SwiftUI gaps exist.
 - Drawing: PencilKit (Apple's official handwriting framework).
-- Local storage: TBD (Core Data or SwiftData).
+- Local storage: Core Data, stored in `Library/Application Support/` (app-private, not exposed to the Files app).
 - Backend: a self-hosted custom backend, NOT CloudKit. Language, database,
   and hosting choices are deferred until needed.
 - Authentication: multi-provider social login — Sign in with Apple (required
@@ -56,6 +61,10 @@ respective catalog before being referenced from a feature.
   When a commit changes UI / components / backend / features, the message
   should briefly state WHY, not only WHAT. The commit log is the substitute
   for an ADR; future spelunking uses `git log --grep=...`.
+- Code-to-ID mapping: every Swift file that implements a UI node (U-XXX)
+  or component (C-XXX) starts with a one-line header comment, e.g.
+  `// U-023 Canvas` or `// C-002 PencilKitBridge`. This makes catalog IDs
+  greppable from inside the code.
 
 ### Feature File Format
 
@@ -70,12 +79,13 @@ See `docs/requirements/_template.md` and `docs/requirements/F-001-handwriting-ca
 
 ## Where Things Live
 
+- `docs/roadmap.md` — the development path: stages v0..v6.
 - `docs/requirements/` — feature index and per-feature flow specs (F-XXX).
 - `docs/ui/README.md` — UI containment tree (U-XXX).
 - `docs/components/README.md` — iOS component catalog (C-XXX).
 - `docs/backend/README.md` — backend module catalog (S-XXX).
 - `docs/glossary.md` — shared terminology.
-- `ios/` — Xcode project (created later).
+- `ios/` — Xcode project.
 - `backend/` — backend code (created later).
 - `assets/` — design and reference assets.
 - `scripts/` — utility scripts.

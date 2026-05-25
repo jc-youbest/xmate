@@ -1,5 +1,10 @@
 # F-009 Multi-page Note
 
+**Status: Deprecated.** Superseded by F-051 Multi-page Document and Page
+Turning, which replaces this thumbnail-navigator design with an ordered
+page sequence and a swipe-based page turn. Kept for history; do not
+implement.
+
 A note can have multiple pages; the user can add, switch, delete, and reorder them.
 
 ## Flow

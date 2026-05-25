@@ -14,3 +14,9 @@ When user taps a preset color in U-017 ColorPicker:
 When user picks "custom" in U-017 ColorPicker:
 - App shows the system color wheel.
 - On selection, C-002 PencilKitBridge updates the active tool's color.
+
+## Implementation Status
+
+A preset palette and a system color wheel for custom colors are delivered
+by the system PKToolPicker that F-001 attaches to the canvas. The custom
+U-017 ColorPicker described in the flow above is still ahead.

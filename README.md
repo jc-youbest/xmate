@@ -1,8 +1,9 @@
 # xmate
 
-A handwriting-first iPad notes app with a social twist: share your
-handwritten pages with pen pals, including sending handwritten letters with
-embedded images.
+A handwriting-first iPad app built on a personalized-stationery model. Each
+page is a fixed sheet the user composes — background, lines, and framed
+photos — then locks and writes on by hand. A social layer lets users share
+their multi-page stationery documents with pen pals.
 
 Built with Swift, SwiftUI, and PencilKit on iPadOS. Backed by a custom
 self-hosted backend (not CloudKit). Targets the latest Apple Pencil while

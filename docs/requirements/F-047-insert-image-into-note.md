@@ -1,5 +1,11 @@
 # F-047 Insert Image into Note
 
+**Status: Deprecated.** Superseded by two later features: F-050 Create
+Single-page Personalized Stationery places images as photo frames during a
+locked compose phase, and F-054 Insert Media While Writing (roadmap v1)
+covers adding media to a live page while writing. Kept for history; do not
+implement.
+
 The user inserts an image into the current page; the image becomes a movable layer beneath handwriting.
 
 ## Flow

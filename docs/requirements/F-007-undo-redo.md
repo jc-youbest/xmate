@@ -16,3 +16,9 @@ When user taps U-022 RedoButton on U-015 PenToolbar:
 
 When user makes any new edit after undoing:
 - C-014 UndoStack discards the forward redo history.
+
+## Implementation Status
+
+Undo and redo controls are delivered by the system PKToolPicker that F-001
+attaches to the canvas. The custom U-021 UndoButton and U-022 RedoButton
+described in the flow above are still ahead.

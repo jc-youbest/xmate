@@ -1,5 +1,9 @@
 # F-010 Paper Styles
 
+**Status: Deprecated.** Superseded by F-050 Create Single-page Personalized
+Stationery. Paper background and line style are now part of the broader
+stationery composition flow. Kept for history; do not implement.
+
 The user picks the paper background for a note page.
 
 ## Flow
