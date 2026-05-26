@@ -20,8 +20,11 @@ When user writes over a media item with Apple Pencil:
 When user removes a media item:
 - The item and its stored asset are removed from the page.
 
-When the page rotates or zooms (F-053 Page Rotation and Zoom):
-- Media items scale and rotate together with the page.
+When the page is zoomed (F-053 Page Geometry and Zoom):
+- Media items scale together with the page as one unit. The page does
+  not rotate with the device — letter content stays portrait, postcard
+  content stays landscape — so media items have no separate
+  device-rotation behaviour.
 
 ## Notes
 

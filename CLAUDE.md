@@ -10,8 +10,43 @@ document is an ordered sequence of pages. Each page is a fixed sheet the
 user first composes — background color, line style, and photos in movable
 frames — then locks with a one-way "generate" step, after which it can be
 written on by hand. The user fills a page and turns to the next, like real
-letter paper. Each page is one bounded sheet of fixed size — it can be zoomed and follows device rotation, but it is never an infinite or pannable canvas. xmate
-is digital stationery — not a whiteboard, not an Apple Notes clone.
+letter paper. Each page is one bounded sheet of fixed logical size and
+fixed aspect ratio. It can be zoomed but is never an infinite or pannable
+canvas. xmate is digital stationery — not a whiteboard, not an Apple Notes
+clone.
+
+A document is one of two content types, and the type fixes the page's
+orientation for the lifetime of the document:
+
+- **Letter** — portrait pages, fixed aspect 1 : √2 (A4 portrait). The
+  primary stationery; the writing-mode default.
+- **Postcard** — landscape pages, fixed aspect 3 : 2 (4 × 6 inch postcard).
+  Same underlying data model as a letter, only the page dimensions differ.
+
+Logical page sizes never change with device. Each iPad scales the logical
+page uniformly to fit; a line written on iPad mini occupies the same
+relative space on iPad Pro 13". The app does not reflow content for device
+size or orientation — handwriting layout is preserved verbatim across all
+iPads.
+
+Device orientation does not rotate the in-content UI. While the user is on
+a letter, the screen is locked to portrait; while on a postcard, it is
+locked to landscape. If the user holds the iPad the wrong way for the
+current content, they are expected to rotate the device — the app does not
+adapt to the user's grip. Multi-orientation flexibility is deferred to v5.
+
+The app has two top-level full-screen surfaces that the user explicitly
+switches between:
+
+- **Social Screen** — the inbox / feed / pen-pal layer. v1 ships a
+  structural shell only; concrete layout lands in v3+.
+- **Content Screen** — focuses on one letter or one postcard. Has a
+  read-only browse mode and an edit mode that share the same layout; only
+  the toolset changes between them. The current `WritingScreen` is the
+  writing variant of this screen.
+
+The two screens are mutually exclusive and switched via an explicit
+top-bar control — never a sliding sidebar over the writing surface.
 
 Two products in one: the stationery authoring experience above, plus a
 social layer where users share their documents with pen pals. The social

@@ -1,7 +1,9 @@
 # F-051 Multi-page Document and Page Turning
 
 The document is an ordered sequence of pages; the user turns between them,
-adds pages, and removes pages.
+adds pages, and removes pages. U-101 WritingScreen is the writing variant
+of the Content Screen and one of v1's two top-level screens (alongside
+U-106 SocialScreen — see F-055).
 
 ## Flow
 
@@ -24,6 +26,11 @@ When user taps U-095 AddPageButton on U-102 WritingTopBar:
 - C-001 NoteStore appends a new blank page after the current page.
 - U-023 Canvas turns to the new page; U-093 PageIndicator updates.
 
+When user taps U-107 BackToSocialButton on U-102 WritingTopBar:
+- C-001 NoteStore flushes the current page's pending strokes.
+- The app transitions to U-106 SocialScreen (F-055). The current document
+  remains intact; opening it again returns to the same page.
+
 When user opens U-103 WritingOverflowMenu on U-102 WritingTopBar:
 - The menu offers "delete page" and "delete document". "delete page" is
   disabled when the document has only one page.
@@ -44,7 +51,13 @@ with the stationery model in roadmap v2.
 
 ## Implementation Status
 
-Implemented in roadmap stage v1 (first increment). Key decisions:
+The multi-page core (page turning, add page, delete page, delete
+document) was implemented in the v1 first increment. The
+U-107 BackToSocialButton flow is **not yet implemented** — it lands
+with F-055 Social Screen v1 Stub when the second top-level screen is
+introduced.
+
+Key decisions from the implemented core:
 
 - **WritingScreen (U-101)**: new `WritingScreen.swift`; `ContentView` is
   now a thin shell that hosts it. The screen manages `[Page]` and

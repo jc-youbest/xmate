@@ -4,9 +4,16 @@ Shared vocabulary for this project. Update whenever a new term recurs.
 
 | Term | Meaning |
 |---|---|
-| Document | An ordered sequence of pages — the unit a user creates, opens, and shares. F-050 / F-051 and later features use "document". |
+| Document | An ordered sequence of pages — the unit a user creates, opens, and shares. F-050 / F-051 and later features use "document". A document is one of two content types: Letter or Postcard. |
 | Note | The term earlier features (e.g. F-011) use for the same thing as a document. Treat as a synonym of Document. |
-| Page | One bounded sheet of fixed size within a document. It can be zoomed and follows device rotation, but is never an infinite or pannable canvas. Has a compose phase and a write phase. |
+| Letter | Content type whose pages are portrait, aspect 1 : √2 (A4 portrait). The default writing-mode content type. |
+| Postcard | Content type whose pages are landscape, aspect 3 : 2 (4 × 6 inch postcard). Same underlying data model as Letter; only the page dimensions differ. |
+| Content type | One of {Letter, Postcard}. Fixed at document creation; determines page aspect ratio and Content Screen orientation lock for the document's lifetime. |
+| Page | One bounded sheet of fixed logical size within a document. It can be zoomed, but is never an infinite or pannable canvas, and never rotates with the device. Has a compose phase and a write phase. |
+| Logical page size | A page's fixed dimensions in logical points. Never changes — not on rotation, not on zoom, not on cross-device opens. |
+| Fit scale | The uniform scale `min(viewport.w / logical.w, viewport.h / logical.h)` applied to project the logical page onto the current iPad screen. Differs across iPad models; the logical page itself does not. |
+| Content Screen | The top-level full-screen surface focused on one document. Has a read-only browse mode and an edit mode that share the same layout; only the toolset changes. U-101 WritingScreen is its writing variant. |
+| Social Screen | The other top-level full-screen surface — inbox, feed, pen-pal layer, etc. v1 ships a structural stub only. U-106 SocialScreen. |
 | Stationery | A page's composed background — background color, line style, and photo frames — flattened and locked by the Generate step. |
 | Compose phase | The editable phase of a page, in which the user builds its stationery. |
 | Write phase | The phase after generation, in which the user writes by hand on the locked stationery. |

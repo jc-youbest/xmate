@@ -104,13 +104,17 @@ optional; omit when the name is self-explanatory.
     - U-090 PhotoFrame — movable / rotatable / scalable photo container on the page
     - U-091 GenerateButton
     - U-092 GenerateConfirmDialog — modal: warns generation is final and irreversible
-  - U-101 WritingScreen — writing mode; the app opens straight into it
+  - U-101 WritingScreen — the writing variant of the Content Screen; the app opens straight into it (F-051)
     - U-102 WritingTopBar — thin top bar
+      - U-107 BackToSocialButton — exits to U-106 SocialScreen (F-051 / F-055)
       - U-093 PageIndicator — current page position in a document, e.g. "1 / 3" (F-051)
       - U-095 AddPageButton — appends a new blank page (F-051)
       - U-103 WritingOverflowMenu — modal: delete page, delete document (F-051 / F-011)
-    - U-023 Canvas — active drawing surface
-    - U-104 WritingSidebar — reserved side area for later inbox / history features; the page rescales to the space it leaves free (F-053)
+    - U-023 Canvas — active drawing surface, sized to the document's logical page (F-053)
+  - U-106 SocialScreen — the second top-level surface; v1 stub (F-055)
+    - U-109 SocialTopBar — thin top bar
+      - U-110 OpenContentButton — returns to U-101 WritingScreen on the last document (F-055)
+    - U-108 SocialLayoutGrid — structural placeholder for inbox / feed / pen-pal / discover / drift-bottle sub-areas; concrete contents land in v3+ (F-055)
   - U-098 StationeryLibraryScreen — browse and pick locked stationery (F-052)
     - U-099 StationeryLibraryItem — one library entry, with preview
       - U-100 StationeryLibraryItemMenu — modal: rename, delete
@@ -128,13 +132,17 @@ are kept only for history.
   stationery source returns with the stationery model in v2.
 - U-042 ImageOverlay — belonged to the deprecated F-047; the writing-mode
   media of F-054 will define its own nodes.
+- U-104 WritingSidebar — v1 retired the overlay-sidebar concept on the
+  Content Screen. Browsing happens on U-106 SocialScreen instead, reached
+  explicitly via U-107 BackToSocialButton. See F-053 / F-055 for the
+  decision context.
 
 ## Pending Reconciliation
 
-The v1 writing mode now has its screen-level home: U-101 WritingScreen with
-U-102 WritingTopBar, U-103 WritingOverflowMenu, and U-104 WritingSidebar,
-and with U-023 Canvas, U-093 PageIndicator, and U-095 AddPageButton
-re-homed under it.
+The v1 app now has two top-level screens — U-101 WritingScreen (writing
+variant of the Content Screen) and U-106 SocialScreen — switched
+explicitly via U-107 BackToSocialButton and U-110 OpenContentButton.
+U-104 WritingSidebar has been retired.
 
 Still unreconciled are the original single-note editor nodes — U-010
 NoteEditorScreen, U-011 EditorTopBar and its children, U-015 PenToolbar and
