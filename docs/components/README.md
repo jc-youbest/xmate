@@ -33,3 +33,4 @@ When a component's spec grows beyond one row, move it to its own file at
 | C-024 | PushNotificationHandler | Register for and route APNs notifications |
 | C-025 | PlaybackRecorder | Capture per-stroke timing for replay |
 | C-026 | PlaybackRenderer | Render recorded strokes as video or GIF |
+| C-027 | PageGeometry | Logical page sizes per content type and fit-to-viewport scale (F-053) |

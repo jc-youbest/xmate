@@ -74,3 +74,57 @@ There is also no sidebar reflow flow: v1 has no overlay sidebar on the
 Content Screen. Browsing happens on the Social Screen (F-055), and
 transitions between Content and Social are explicit screen-level moves,
 not co-existing panels.
+
+## Implementation Status
+
+The geometry half of this feature ships in roadmap v1 stage 2. **Zoom
+is not yet implemented** — it is the planned stage 3 work, on top of
+the geometry layer below.
+
+Stage 2 decisions:
+
+- **C-027 PageGeometry**: new pure-data Swift enum in
+  `ios/xmate/xmate/PageGeometry.swift`. Defines `ContentType`
+  (`.letter` / `.postcard`), per-type logical sizes
+  (`letterLogicalSize = 595×842` pt, A4 in PDF-standard points;
+  `postcardLogicalSize = 864×576` pt, 4 × 6 inch ×2 for stroke
+  precision), and `fitScale(in:for:)`.
+
+- **WritingScreen (U-101)**: the canvas region is wrapped in a
+  `GeometryReader`. The bridge is `.frame`-d at the letter logical
+  dimensions and `.scaleEffect(fitScale)`-ed to fit the viewport,
+  centered in a viewport-sized `ZStack`. Handwriting strokes are
+  recorded in logical coordinates, so the same `Page.drawingData`
+  reloads identically on any iPad.
+
+- **PKCanvasView (C-002 PencilKitBridge)**: unchanged. The bridge
+  doesn't care about its frame; SwiftUI sizes it externally and
+  Apple Pencil input is auto-mapped to the bridge's own coordinate
+  space via the layer transform.
+
+- **Orientation lock**: declared in `project.pbxproj` build settings
+  (`INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad =
+  "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown"`).
+  This is a stage 2 simplification — it locks the entire app to
+  portrait, which is correct for letter-only content. When postcard
+  support arrives (with a Core Data `contentType` migration), the
+  build-setting lock will be replaced by per-screen orientation
+  control at the `UIHostingController` level.
+
+- **Stage 2 hard-codes `.letter`**: `WritingScreen` reads
+  `contentType: ContentType = .letter`. The follow-up postcard
+  increment adds a `contentType` field to the `Document` Core Data
+  entity, a migration, and the per-screen orientation switch.
+
+- **Existing handwriting data**: strokes drawn in earlier stage-1
+  builds were recorded at the raw viewport size (~810×1024 pt on
+  iPad 8). After stage 2 they are interpreted as 595×842 logical
+  coordinates, so old strokes appear shifted and partially clipped.
+  Resolution: delete and reinstall the app on the dev device before
+  testing stage 2; the new persistent store starts clean.
+
+- **Zoom & double-tap (deferred)**: the flow above describes
+  pinch-to-zoom and an optional double-tap. Neither is implemented in
+  stage 2. Stage 3 will introduce a `userZoom` factor on top of
+  `fitScale`, suspend swipe-driven page turning when zoomed in, and
+  add bounded pan within the page.

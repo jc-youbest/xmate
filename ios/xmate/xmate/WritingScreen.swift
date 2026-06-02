@@ -1,13 +1,16 @@
 // U-101 WritingScreen
 //
-// The writing-mode screen for roadmap stage v1 (F-051).
+// The writing-mode screen for roadmap stage v1 (F-051) — the writing
+// variant of the Content Screen. v1 stage 2 introduces fixed-size
+// logical pages (F-053) projected onto each iPad's screen.
 //
 // Layout:
 //   U-102 WritingTopBar    — thin top bar (page indicator, add, overflow menu)
-//   U-104 WritingSidebar   — structural placeholder (hidden, zero width).
-//                            When the sidebar is wired in, the canvas reflows
-//                            into the remaining horizontal space automatically.
-//   U-023 Canvas           — active drawing surface via C-002 PencilKitBridge
+//   U-023 Canvas           — active drawing surface via C-002 PencilKitBridge,
+//                            sized to the document's logical page (C-027
+//                            PageGeometry) and uniformly scaled to fit the
+//                            available area, centered horizontally and
+//                            vertically.
 //
 // Page navigation (F-051):
 //   • Finger swipe up   → next page  (gesture inside PencilKitBridge)
@@ -19,6 +22,17 @@
 // the new page's saved drawing. dismantleUIView in PencilKitBridge flushes
 // the departing page before teardown, so no strokes are ever lost on a fast
 // page turn.
+//
+// Geometry (stage 2, F-053):
+//   The PencilKitBridge is framed at the page's logical dimensions
+//   (C-027 PageGeometry.letterLogicalSize for letters), then visually
+//   scaled with .scaleEffect(fitScale) to fit the viewport. Apple Pencil
+//   input lands at logical coordinates regardless of fitScale, so strokes
+//   are stored and reload identically on any iPad.
+//
+// Orientation: the app is locked to portrait at the Info.plist level for
+// stage 2. When postcard support arrives (with a Core Data migration
+// adding `contentType` to Document), orientation will become per-screen.
 //
 // Delete document (v1 stub): resets to a single blank page instead of
 // navigating to a note list, because U-002 NoteListScreen does not exist
@@ -64,39 +78,55 @@ struct WritingScreen: View {
                 )
             }
 
-            // Canvas area. U-104 WritingSidebar will share this HStack
-            // when it is introduced; the canvas reflows automatically.
-            HStack(spacing: 0) {
+            // U-023 Canvas area — fixed-size logical page projected onto
+            // the available viewport via C-002 PencilKitBridge and
+            // C-027 PageGeometry (F-053 stage 2).
+            //
+            // Stage 2 (letter only): contentType is hard-coded to
+            // .letter. When the Document.contentType field arrives with
+            // postcard support, read it from the current document.
+            GeometryReader { proxy in
+                let contentType: ContentType = .letter
+                let logical = PageGeometry.logicalSize(for: contentType)
+                let fitScale = PageGeometry.fitScale(in: proxy.size,
+                                                     for: contentType)
 
-                // U-104 WritingSidebar — reserved, zero width for now.
-
-                // U-023 Canvas via C-002 PencilKitBridge.
-                // Keyed by page UUID so every page change yields a fresh
-                // PKCanvasView (loading that page's saved drawing), while
-                // dismantleUIView ensures the departing page is flushed first.
-                if let page = currentPage {
-                    PencilKitBridge(
-                        page: page,
-                        store: store,
-                        onSwipeUp: handleSwipeUp,
-                        onSwipeDown: handleSwipeDown
-                    )
-                    // Extend the canvas below the home indicator so the
-                    // PKToolPicker floats above full writable space.
-                    .ignoresSafeArea(edges: .bottom)
-                    // Slide the incoming page in from the correct edge.
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: turningForward ? .bottom : .top),
-                            removal:   .move(edge: turningForward ? .top   : .bottom)
+                ZStack {
+                    if let page = currentPage {
+                        PencilKitBridge(
+                            page: page,
+                            store: store,
+                            onSwipeUp: handleSwipeUp,
+                            onSwipeDown: handleSwipeDown
                         )
-                    )
-                    // View identity keyed by page UUID. Any page change —
-                    // navigation, add, or delete — recreates the bridge and
-                    // triggers the slide transition.
-                    .id(page.id)
+                        // Frame the canvas at its logical dimensions —
+                        // PKCanvasView records strokes in this
+                        // coordinate space, so the same drawing data
+                        // re-loads identically on any iPad.
+                        .frame(width: logical.width, height: logical.height)
+                        // Project the logical page onto the viewport
+                        // by a uniform scale that preserves aspect.
+                        .scaleEffect(fitScale)
+                        // Slide the incoming page in from the correct
+                        // edge; .id-driven recreation triggers the
+                        // transition on every page change.
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: turningForward ? .bottom : .top),
+                                removal:   .move(edge: turningForward ? .top   : .bottom)
+                            )
+                        )
+                        .id(page.id)
+                    }
                 }
+                // Center the scaled page in the viewport. Letterbox
+                // strips on the leftover area inherit the screen
+                // background.
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
+            // Extend the canvas area below the home indicator so the
+            // PKToolPicker floats above full writable space.
+            .ignoresSafeArea(edges: .bottom)
         }
         .onAppear(perform: loadDocument)
 
