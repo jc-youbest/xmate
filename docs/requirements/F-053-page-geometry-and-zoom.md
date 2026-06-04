@@ -75,6 +75,21 @@ Content Screen. Browsing happens on the Social Screen (F-055), and
 transitions between Content and Social are explicit screen-level moves,
 not co-existing panels.
 
+The Content Screen has two Modes — **Reading Mode** and **Writing Mode**
+— and they share the same page geometry described in this feature.
+Letter logical size is 595×842 pt in both Modes; the fit-scale
+calculation is identical; the page is portrait-locked in both Modes.
+The Modes differ only in toolset and Pencil behaviour — Writing Mode
+inks, Reading Mode does not — never in geometry. The same statement
+holds for Postcard. This makes Reading Mode a pure subset of Writing
+Mode at the rendering layer, which is why v1 ships Writing Mode and
+Reading Mode reuses it later without geometry changes.
+
+Pagination Style (F-056) is a separate axis on top of geometry. Both
+Single Page and Continuous use the same logical page sizes and the
+same fit-scale rule defined here; F-056 only adds the multi-page
+layout container around them.
+
 ## Implementation Status
 
 The geometry half of this feature ships in roadmap v1 stage 2. **Zoom

@@ -35,15 +35,33 @@ locked to landscape. If the user holds the iPad the wrong way for the
 current content, they are expected to rotate the device — the app does not
 adapt to the user's grip. Multi-orientation flexibility is deferred to v5.
 
+The Content Screen offers two equal **Pagination Styles**, a global user
+preference applied immediately:
+
+- **Single Page** — one full page fills the screen at a time; finger
+  swipes flip discretely between pages. Direction follows the document's
+  content type (letters: vertical; postcards: horizontal).
+- **Continuous** — pages stack and scroll continuously in the same
+  direction. In Writing Mode the scroll snaps to the nearest page when
+  it stops, so the writing surface is always a single steady page; in
+  Reading Mode the scroll is free, and two adjacent pages can be partly
+  visible at once.
+
+Pagination Style is one axis of the Content Screen; the other is **Mode**
+— Reading Mode vs Writing Mode. The two share the same layout; only the
+toolset and Pencil behaviour differ. (For consistency: the noun "Mode"
+in this codebase refers to Reading vs Writing only; never use "mode" for
+Pagination Style.)
+
 The app has two top-level full-screen surfaces that the user explicitly
 switches between:
 
 - **Social Screen** — the inbox / feed / pen-pal layer. v1 ships a
   structural shell only; concrete layout lands in v3+.
-- **Content Screen** — focuses on one letter or one postcard. Has a
-  read-only browse mode and an edit mode that share the same layout; only
-  the toolset changes between them. The current `WritingScreen` is the
-  writing variant of this screen.
+- **Content Screen** — focuses on one letter or one postcard. Has
+  Reading Mode and Writing Mode that share the same layout; only the
+  toolset changes between them. The current `WritingScreen` is the
+  Writing-Mode variant of this screen.
 
 The two screens are mutually exclusive and switched via an explicit
 top-bar control — never a sliding sidebar over the writing surface.

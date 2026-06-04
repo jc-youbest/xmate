@@ -34,3 +34,4 @@ When a component's spec grows beyond one row, move it to its own file at
 | C-025 | PlaybackRecorder | Capture per-stroke timing for replay |
 | C-026 | PlaybackRenderer | Render recorded strokes as video or GIF |
 | C-027 | PageGeometry | Logical page sizes per content type and fit-to-viewport scale (F-053) |
+| C-028 | SettingsStore | Global app preferences (Pagination Style, etc.) persisted via UserDefaults (F-056) |

@@ -51,6 +51,17 @@ landscape. The user is expected to orient the device to the content — the
 app does not adapt to grip. Multi-orientation flexibility across the app is
 deferred to v5.
 
+The Content Screen offers two equal **Pagination Styles** as a global
+user preference applied immediately (F-056):
+
+- **Single Page** — discrete swipe between full-screen pages
+  (vertical for letters, horizontal for postcards once postcard ships).
+  Default for new users; this is what stage 2 ships.
+- **Continuous** — pages stack and scroll continuously. Writing Mode
+  snaps to the nearest page after scrolling stops; Reading Mode (a
+  later increment) scrolls freely with two pages partly visible at
+  once. Stage 3 ships Continuous for letter content.
+
 The Content Screen supports whole-page zoom (1× to 3×). Zoom scales
 handwriting and, in later stages, the stationery background as one unit.
 The page remains one bounded sheet — never an infinite canvas, never

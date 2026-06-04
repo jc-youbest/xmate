@@ -109,7 +109,8 @@ optional; omit when the name is self-explanatory.
       - U-107 BackToSocialButton — exits to U-106 SocialScreen (F-051 / F-055)
       - U-093 PageIndicator — current page position in a document, e.g. "1 / 3" (F-051)
       - U-095 AddPageButton — appends a new blank page (F-051)
-      - U-103 WritingOverflowMenu — modal: delete page, delete document (F-051 / F-011)
+      - U-103 WritingOverflowMenu — modal: pagination style, delete page, delete document (F-051 / F-011 / F-056)
+        - U-111 PaginationStylePicker — toggle between Single Page and Continuous; reflects and updates the global setting (F-056)
     - U-023 Canvas — active drawing surface, sized to the document's logical page (F-053)
   - U-106 SocialScreen — the second top-level surface; v1 stub (F-055)
     - U-109 SocialTopBar — thin top bar

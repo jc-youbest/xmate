@@ -1,9 +1,15 @@
 # F-051 Multi-page Document and Page Turning
 
 The document is an ordered sequence of pages; the user turns between them,
-adds pages, and removes pages. U-101 WritingScreen is the writing variant
-of the Content Screen and one of v1's two top-level screens (alongside
-U-106 SocialScreen — see F-055).
+adds pages, and removes pages. U-101 WritingScreen is the Writing-Mode
+variant of the Content Screen and one of v1's two top-level screens
+(alongside U-106 SocialScreen — see F-055).
+
+The swipe-driven page-turn flow below assumes Pagination Style = Single
+Page (F-056). When Pagination Style = Continuous, finger swipe drives
+the continuous scroll instead of a discrete turn; the same
+`C-001 NoteStore` page operations underneath stay identical — only the
+navigation layer changes. See F-056 for the Continuous flow.
 
 ## Flow
 
