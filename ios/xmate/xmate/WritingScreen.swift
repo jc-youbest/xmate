@@ -24,15 +24,17 @@
 // page turn.
 //
 // Geometry (stage 2, F-053):
-//   The PencilKitBridge is framed at the page's logical dimensions
-//   (C-027 PageGeometry.letterLogicalSize for letters), then visually
-//   scaled with .scaleEffect(fitScale) to fit the viewport. Apple Pencil
-//   input lands at logical coordinates regardless of fitScale, so strokes
+//   The PencilKitBridge is framed at the document's paper dimensions
+//   (C-027 PaperPreset.letter for letters), then visually scaled with
+//   .scaleEffect(fitScale) to fit the viewport. Apple Pencil input
+//   lands at logical coordinates regardless of fitScale, so strokes
 //   are stored and reload identically on any iPad.
 //
 // Orientation: the app is locked to portrait at the Info.plist level for
-// stage 2. When postcard support arrives (with a Core Data migration
-// adding `contentType` to Document), orientation will become per-screen.
+// stage 2. When a non-portrait paper (e.g. PaperPreset.postcard) arrives
+// — with the Core Data migration that records each document's paper
+// dimensions — orientation will become per-screen, derived from
+// `paper.orientationLock`.
 //
 // Delete document (v1 stub): resets to a single blank page instead of
 // navigating to a note list, because U-002 NoteListScreen does not exist
@@ -82,14 +84,13 @@ struct WritingScreen: View {
             // the available viewport via C-002 PencilKitBridge and
             // C-027 PageGeometry (F-053 stage 2).
             //
-            // Stage 2 (letter only): contentType is hard-coded to
-            // .letter. When the Document.contentType field arrives with
-            // postcard support, read it from the current document.
+            // Stage 2 (letter only): paper is hard-coded to
+            // PaperPreset.letter. When per-document paper arrives
+            // (Core Data migration adds paperWidth/paperHeight), read
+            // them from the current document instead.
             GeometryReader { proxy in
-                let contentType: ContentType = .letter
-                let logical = PageGeometry.logicalSize(for: contentType)
-                let fitScale = PageGeometry.fitScale(in: proxy.size,
-                                                     for: contentType)
+                let paper: PaperSize = PaperPreset.letter
+                let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
 
                 ZStack {
                     if let page = currentPage {
@@ -99,11 +100,11 @@ struct WritingScreen: View {
                             onSwipeUp: handleSwipeUp,
                             onSwipeDown: handleSwipeDown
                         )
-                        // Frame the canvas at its logical dimensions —
-                        // PKCanvasView records strokes in this
-                        // coordinate space, so the same drawing data
-                        // re-loads identically on any iPad.
-                        .frame(width: logical.width, height: logical.height)
+                        // Frame the canvas at the paper's logical
+                        // dimensions — PKCanvasView records strokes in
+                        // this coordinate space, so the same drawing
+                        // data re-loads identically on any iPad.
+                        .frame(width: paper.width, height: paper.height)
                         // Project the logical page onto the viewport
                         // by a uniform scale that preserves aspect.
                         .scaleEffect(fitScale)

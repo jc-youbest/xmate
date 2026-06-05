@@ -15,32 +15,46 @@ fixed aspect ratio. It can be zoomed but is never an infinite or pannable
 canvas. xmate is digital stationery — not a whiteboard, not an Apple Notes
 clone.
 
-A document is one of two content types, and the type fixes the page's
-orientation for the lifetime of the document:
+A document is written on a **paper** — a sheet with fixed logical
+dimensions in points. The paper's dimensions determine everything
+mechanical about how the document is rendered and navigated:
+orientation lock, pagination scroll direction, fit-to-screen scale.
 
-- **Letter** — portrait pages, fixed aspect 1 : √2 (A4 portrait). The
-  primary stationery; the writing-mode default.
-- **Postcard** — landscape pages, fixed aspect 3 : 2 (4 × 6 inch postcard).
-  Same underlying data model as a letter, only the page dimensions differ.
+xmate ships **Paper Presets** — named paper sizes the user picks from
+when creating a new document:
 
-Logical page sizes never change with device. Each iPad scales the logical
-page uniformly to fit; a line written on iPad mini occupies the same
-relative space on iPad Pro 13". The app does not reflow content for device
-size or orientation — handwriting layout is preserved verbatim across all
-iPads.
+- **Letter** — portrait, 1 : √2 (A4 portrait). The v1 default and
+  the primary stationery.
+- **Postcard** — landscape, 3 : 2 (4 × 6 inch). Same data model as
+  Letter; only the paper dimensions differ.
 
-Device orientation does not rotate the in-content UI. While the user is on
-a letter, the screen is locked to portrait; while on a postcard, it is
-locked to landscape. If the user holds the iPad the wrong way for the
-current content, they are expected to rotate the device — the app does not
-adapt to the user's grip. Multi-orientation flexibility is deferred to v5.
+Future presets (e.g. note, A5, greeting card) are added as new
+entries in one preset catalogue — no other code branches on which
+preset a document uses; all behaviour is derived from the paper's
+dimensions. Code-level distinctions between letter and postcard are
+deliberately absent: the only distinction is the values of
+`paper.width` and `paper.height`.
+
+Logical page sizes never change with device. Each iPad scales the
+paper uniformly to fit; a line written on iPad mini occupies the same
+relative space on iPad Pro 13". The app does not reflow content for
+device size or orientation — handwriting layout is preserved verbatim
+across all iPads.
+
+Device orientation does not rotate the in-content UI. When the paper
+is portrait, the Content Screen is locked to portrait; when the
+paper is landscape, it is locked to landscape. If the user holds the
+iPad the wrong way for the current paper, they are expected to
+rotate the device — the app does not adapt to the user's grip.
+Multi-orientation flexibility is deferred to v5.
 
 The Content Screen offers two equal **Pagination Styles**, a global user
 preference applied immediately:
 
 - **Single Page** — one full page fills the screen at a time; finger
-  swipes flip discretely between pages. Direction follows the document's
-  content type (letters: vertical; postcards: horizontal).
+  swipes flip discretely between pages. Direction is derived from the
+  paper's orientation (portrait paper → vertical; landscape paper →
+  horizontal).
 - **Continuous** — pages stack and scroll continuously in the same
   direction. In Writing Mode the scroll snaps to the nearest page when
   it stops, so the writing surface is always a single steady page; in

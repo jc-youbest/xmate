@@ -2,44 +2,51 @@
 
 The page is a fixed-size logical sheet that scales uniformly to fit any
 iPad, preserving handwriting layout verbatim across devices. A document's
-content type (letter or postcard) fixes the page aspect ratio and the
-in-content UI orientation for the document's lifetime. The user can zoom
-the whole page as a single unit but can never break the page boundary.
+**paper** (typically chosen from a Paper Preset such as Letter or
+Postcard) fixes the page aspect ratio and the in-content UI orientation
+for the document's lifetime. The user can zoom the whole page as a
+single unit but can never break the page boundary.
 
 ## Logical Page Sizes
 
-Every page has fixed logical dimensions in points, set by the document's
-content type:
+A document's page has the fixed logical dimensions of its **paper**, in
+points. The v1 catalogue ships two presets:
 
-- **Letter** — portrait, aspect 1 : √2 (A4 portrait). Logical size in
-  points is the implementation's choice; the ratio is what matters.
-- **Postcard** — landscape, aspect 3 : 2 (4 × 6 inch postcard). Same.
+- **Letter** — portrait, 595 × 842 pt (A4 in PDF-standard points,
+  aspect 1 : √2 to within 0.1%).
+- **Postcard** — landscape, 864 × 576 pt (4 × 6 inch ×2 for stroke
+  precision, aspect 3 : 2 exactly).
 
-A page's logical size never changes — not on device rotation, not on
+Adding a new paper (e.g. an A5 note, a square greeting card) means
+one new entry in `PaperPreset.catalog`; no code branches anywhere
+need to learn its name. Orientation lock and pagination scroll axis
+are derived from `paper.width` and `paper.height` — never from a name.
+
+A paper's logical size never changes — not on device rotation, not on
 zoom, not on cross-device opens.
 
 ## Flow
 
-When user opens a letter on U-101 WritingScreen:
+When user opens a document whose paper is portrait (e.g. Letter):
 - The screen is locked to portrait orientation
-  (`UIInterfaceOrientationMask.portrait`).
-- U-023 Canvas is sized to the letter's logical dimensions and scaled
-  uniformly by `fitScale = min(viewport.w / logical.w, viewport.h /
-  logical.h)` to fit the available area; any unfilled area shows the
+  (`paper.orientationLock == .portrait`).
+- U-023 Canvas is sized to the paper's logical dimensions and scaled
+  uniformly by `fitScale = min(viewport.w / paper.w, viewport.h /
+  paper.h)` to fit the available area; any unfilled area shows the
   screen background.
 - Handwriting strokes are stored in logical page coordinates; the same
   data on another iPad re-fits to that device's screen without reflow.
 
-When user opens a postcard on U-101 WritingScreen:
+When user opens a document whose paper is landscape (e.g. Postcard):
 - The screen is locked to landscape orientation
-  (`UIInterfaceOrientationMask.landscape`).
-- The same fit-to-screen logic applies, using the postcard's landscape
-  logical dimensions.
+  (`paper.orientationLock == .landscape`).
+- The same fit-to-screen logic applies, using the landscape paper's
+  dimensions.
 
 When user holds the iPad in the orientation that does not match the
-current content type:
+current paper:
 - The app does not rotate the UI to match the device. The user is
-  expected to rotate the device to match the content (iOS shows the
+  expected to rotate the device to match the paper (iOS shows the
   locked UI sideways on the screen, prompting the user physically).
 
 When user pinches the page with two fingers (1× ≤ zoom ≤ 3×):
@@ -57,18 +64,18 @@ When user double-taps with a finger inside the page (optional, not v1-required):
   (e.g. 2× of fitScale) centered on the tap point.
 
 When the iPad screen size differs across the user's devices:
-- The logical page is unchanged; only `fitScale` differs. A line of
-  handwriting drawn on iPad mini occupies the same fraction of the page
-  on iPad Pro 13" — it never wraps and never re-positions.
+- The paper's logical size is unchanged; only `fitScale` differs. A
+  line of handwriting drawn on iPad mini occupies the same fraction
+  of the paper on iPad Pro 13" — it never wraps and never re-positions.
 
 ## Notes
 
 This feature deliberately does not include device-rotation-driven UI
-flips. v1 locks orientation per content type so that handwriting can
-never be reflowed or re-shaped by a grip change. Device-rotation
-flexibility — for example, allowing the Social Screen to live in either
-orientation — is revisited in v5 iPad device adaptation, and any such
-relaxation must preserve the v1 no-reflow guarantee.
+flips. v1 locks orientation per paper so that handwriting can never be
+reflowed or re-shaped by a grip change. Device-rotation flexibility —
+for example, allowing the Social Screen to live in either orientation
+— is revisited in v5 iPad device adaptation, and any such relaxation
+must preserve the v1 no-reflow guarantee.
 
 There is also no sidebar reflow flow: v1 has no overlay sidebar on the
 Content Screen. Browsing happens on the Social Screen (F-055), and
@@ -76,17 +83,17 @@ transitions between Content and Social are explicit screen-level moves,
 not co-existing panels.
 
 The Content Screen has two Modes — **Reading Mode** and **Writing Mode**
-— and they share the same page geometry described in this feature.
-Letter logical size is 595×842 pt in both Modes; the fit-scale
-calculation is identical; the page is portrait-locked in both Modes.
-The Modes differ only in toolset and Pencil behaviour — Writing Mode
-inks, Reading Mode does not — never in geometry. The same statement
-holds for Postcard. This makes Reading Mode a pure subset of Writing
+— and they share the same page geometry described in this feature. A
+Letter paper is 595×842 pt in both Modes; the fit-scale calculation is
+identical; the page is portrait-locked in both Modes. The Modes differ
+only in toolset and Pencil behaviour — Writing Mode inks, Reading Mode
+does not — never in geometry. The same statement holds for Postcard
+and any future paper. This makes Reading Mode a pure subset of Writing
 Mode at the rendering layer, which is why v1 ships Writing Mode and
 Reading Mode reuses it later without geometry changes.
 
 Pagination Style (F-056) is a separate axis on top of geometry. Both
-Single Page and Continuous use the same logical page sizes and the
+Single Page and Continuous use the same paper logical sizes and the
 same fit-scale rule defined here; F-056 only adds the multi-page
 layout container around them.
 
@@ -96,21 +103,29 @@ The geometry half of this feature ships in roadmap v1 stage 2. **Zoom
 is not yet implemented** — it is the planned stage 3 work, on top of
 the geometry layer below.
 
-Stage 2 decisions:
+Stage 2 decisions (with the stage 2.5 refactor folded in):
 
-- **C-027 PageGeometry**: new pure-data Swift enum in
-  `ios/xmate/xmate/PageGeometry.swift`. Defines `ContentType`
-  (`.letter` / `.postcard`), per-type logical sizes
-  (`letterLogicalSize = 595×842` pt, A4 in PDF-standard points;
-  `postcardLogicalSize = 864×576` pt, 4 × 6 inch ×2 for stroke
-  precision), and `fitScale(in:for:)`.
+- **C-027 PageGeometry** lives in `ios/xmate/xmate/PageGeometry.swift`
+  and exposes:
+    - `struct PaperSize { width, height }` plus derived
+      `isPortrait`, `isLandscape`, `aspectRatio`,
+      `orientationLock`, `paginationAxis`.
+    - `enum PaperPreset` with `.letter = 595×842 pt` and
+      `.postcard = 864×576 pt`, plus a `catalog` array used by the
+      future paper picker.
+    - `PageGeometry.fitScale(in:for:)` taking a `PaperSize`.
+  There is no `ContentType` enum: letter and postcard are values of
+  the same struct, and all behaviour (orientation, scroll axis) is
+  derived from the dimensions. Adding a new paper kind is one entry
+  in `PaperPreset.catalog` with no other code changes.
 
 - **WritingScreen (U-101)**: the canvas region is wrapped in a
-  `GeometryReader`. The bridge is `.frame`-d at the letter logical
+  `GeometryReader`. The bridge is `.frame`-d at the paper's logical
   dimensions and `.scaleEffect(fitScale)`-ed to fit the viewport,
-  centered in a viewport-sized `ZStack`. Handwriting strokes are
-  recorded in logical coordinates, so the same `Page.drawingData`
-  reloads identically on any iPad.
+  centered in a viewport-sized `ZStack`. Stage 2 hard-codes
+  `paper = PaperPreset.letter`; once `Document` carries its paper
+  through a Core Data migration, the screen reads it from the
+  document instead.
 
 - **PKCanvasView (C-002 PencilKitBridge)**: unchanged. The bridge
   doesn't care about its frame; SwiftUI sizes it externally and
@@ -121,15 +136,11 @@ Stage 2 decisions:
   (`INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad =
   "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown"`).
   This is a stage 2 simplification — it locks the entire app to
-  portrait, which is correct for letter-only content. When postcard
-  support arrives (with a Core Data `contentType` migration), the
-  build-setting lock will be replaced by per-screen orientation
-  control at the `UIHostingController` level.
-
-- **Stage 2 hard-codes `.letter`**: `WritingScreen` reads
-  `contentType: ContentType = .letter`. The follow-up postcard
-  increment adds a `contentType` field to the `Document` Core Data
-  entity, a migration, and the per-screen orientation switch.
+  portrait, which is correct while every document uses Letter. When a
+  non-portrait paper ships (with the Core Data migration that records
+  per-document paper dimensions), the build-setting lock is replaced
+  by per-screen orientation control derived from
+  `paper.orientationLock` at the `UIHostingController` level.
 
 - **Existing handwriting data**: strokes drawn in earlier stage-1
   builds were recorded at the raw viewport size (~810×1024 pt on

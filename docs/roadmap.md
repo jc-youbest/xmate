@@ -34,29 +34,32 @@ v1 splits the app into two top-level full-screen surfaces:
   surfaces. v1 ships a structural stub with explicit navigation to and
   from the Content Screen; its concrete contents are designed in v3+.
 
-A document is one of two content types, and the type fixes its page
-orientation for life: **letter** uses portrait pages with aspect 1 : √2
-(A4 portrait); **postcard** uses landscape pages with aspect 3 : 2 (4 × 6
-inch). Same data model, only the page dimensions differ. v1 supports both
-types; choosing a type happens when a new document is created.
+A document is written on a **paper** — a sheet with fixed logical
+dimensions. xmate ships two **Paper Presets** in v1: **Letter** (portrait
+A4, 1 : √2) and **Postcard** (landscape, 3 : 2, 4 × 6 inch). Same data
+model, only the dimensions differ. Future presets (e.g. notes, A5,
+greeting card) are added as new entries in one catalogue — no code
+branches on a preset's name; orientation, scroll direction and aspect
+all derive from the paper's `width` and `height`.
 
 Pages have fixed logical dimensions; every iPad uniformly scales the page
 to fit. Handwriting position is preserved verbatim — a line on iPad mini
 and the same line on iPad Pro 13" occupy the same relative space. Content
 never reflows for screen size.
 
-Device orientation does not rotate the in-content UI. A letter Content
-Screen is locked to portrait; a postcard Content Screen is locked to
-landscape. The user is expected to orient the device to the content — the
-app does not adapt to grip. Multi-orientation flexibility across the app is
-deferred to v5.
+Device orientation does not rotate the in-content UI. A document written
+on portrait paper locks the Content Screen to portrait; landscape paper
+locks it to landscape. The user is expected to orient the device to the
+paper — the app does not adapt to grip. Multi-orientation flexibility
+across the app is deferred to v5.
 
 The Content Screen offers two equal **Pagination Styles** as a global
 user preference applied immediately (F-056):
 
-- **Single Page** — discrete swipe between full-screen pages
-  (vertical for letters, horizontal for postcards once postcard ships).
-  Default for new users; this is what stage 2 ships.
+- **Single Page** — discrete swipe between full-screen pages,
+  direction derived from the paper's orientation (vertical for
+  portrait paper, horizontal for landscape paper). Default for new
+  users; this is what stage 2 ships.
 - **Continuous** — pages stack and scroll continuously. Writing Mode
   snaps to the nearest page after scrolling stops; Reading Mode (a
   later increment) scrolls freely with two pages partly visible at
@@ -114,12 +117,13 @@ Cross-device then needs no dedicated work: one account on different-sized
 iPads displays correctly.
 
 This is also the stage that revisits device-orientation flexibility. v1
-locks each content type to a single orientation (letter → portrait,
-postcard → landscape); v5 evaluates whether to relax that lock — for
-example, by allowing the Social Screen to support both orientations on
-iPads with attached keyboards, or by introducing a "wide letter" variant
-for landscape-only iPad setups. Any relaxation must preserve the v1
-guarantee that handwriting layout never reflows.
+locks each document to its paper's orientation (portrait paper →
+portrait UI; landscape paper → landscape UI); v5 evaluates whether to
+relax that lock — for example, by allowing the Social Screen to
+support both orientations on iPads with attached keyboards, or by
+introducing a "wide letter" paper preset for landscape-only iPad
+setups. Any relaxation must preserve the v1 guarantee that handwriting
+layout never reflows.
 
 ## v6 — Networked content moderation
 

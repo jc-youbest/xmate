@@ -7,23 +7,26 @@ page, Pencil ink, page CRUD); they differ only in how multiple pages
 are laid out and navigated.
 
 Pagination Style is independent of Mode (Reading vs Writing — F-053
-Notes) and of Content Type (Letter vs Postcard — F-053). It composes
-with both: a Letter in Writing Mode + Continuous Pagination Style gives
-vertical scroll with snap; a Postcard in Reading Mode + Continuous
-gives horizontal free scroll with two pages partly visible.
+Notes) and of Paper (the document's dimensions, F-053). It composes
+with both: a Letter (portrait paper) in Writing Mode + Continuous
+gives vertical scroll with snap; a Postcard (landscape paper) in
+Reading Mode + Continuous gives horizontal free scroll with two
+pages partly visible.
 
-## Direction by Content Type
+## Direction by Paper Orientation
 
 Pagination Style fixes the *navigation grammar* (discrete swipe vs
-continuous scroll); Content Type fixes the *direction*:
+continuous scroll); the paper's orientation fixes the *direction*:
 
-- **Letter** (portrait) — direction is vertical. Swipe up / scroll down
-  advances to the next page.
-- **Postcard** (landscape) — direction is horizontal. Swipe left /
-  scroll right advances to the next page.
+- **Portrait paper** (e.g. Letter) — direction is vertical. Swipe up /
+  scroll down advances to the next page.
+- **Landscape paper** (e.g. Postcard) — direction is horizontal. Swipe
+  left / scroll right advances to the next page.
 
-This means there are four concrete combinations (2 styles × 2 content
-types), but only one user-facing setting.
+In code this is `paper.paginationAxis` — `.vertical` when
+`paper.isPortrait`, `.horizontal` when `paper.isLandscape`. Adding a
+new paper preset never touches the navigation code; the axis is
+always derived from the paper's `width` and `height`.
 
 ## Flow
 
@@ -39,15 +42,15 @@ PaginationStylePicker:
 
 When U-101 WritingScreen is rendered with `paginationStyle == .singlePage`:
 - The screen shows exactly one page at a time, centered and fit-scaled
-  per F-053. Page navigation uses finger swipes in the Content-Type
-  direction (F-051). This is the v1 stage-2 behaviour.
+  per F-053. Page navigation uses finger swipes along
+  `paper.paginationAxis` (F-051). This is the v1 stage-2 behaviour.
 
 When U-101 WritingScreen is rendered with `paginationStyle == .continuous`
 in Writing Mode:
-- Pages stack in the Content-Type direction inside a scroll container.
+- Pages stack along `paper.paginationAxis` inside a scroll container.
   Each page is fit-scaled per F-053 to the cross-axis viewport
-  dimension (width for letters, height for postcards), leaving the
-  main-axis free for scrolling.
+  dimension (width for portrait paper, height for landscape paper),
+  leaving the main axis free for scrolling.
 - The user scrolls with a finger pan or a fast swipe; PKCanvasView's
   `drawingPolicy = .pencilOnly` keeps Pencil reserved for writing.
 - When the scroll comes to rest, the container **snaps** to the nearest
@@ -60,9 +63,10 @@ in Writing Mode:
 
 When U-101 WritingScreen is rendered with `paginationStyle == .continuous`
 in Reading Mode (deferred — Reading Mode lands in a later increment):
-- Pages stack in the same way, but the scroll **does not snap** — it
-  decelerates freely. Two adjacent pages can be partly visible
-  simultaneously, with the page gap clearly readable as a boundary.
+- Pages stack along `paper.paginationAxis` in the same way, but the
+  scroll **does not snap** — it decelerates freely. Two adjacent pages
+  can be partly visible simultaneously, with the page gap clearly
+  readable as a boundary.
 - "Current page" has no meaningful definition; U-093 PageIndicator
   shows the page closest to the viewport center, updated live.
 
@@ -102,10 +106,11 @@ to skim or flow through a multi-page letter without breaking it into
 discrete page turns; the snap-on-write rule preserves a stable writing
 surface inside that style.
 
-Pagination Style intentionally does **not** vary by Mode or by Content
-Type — those are independent axes. Once a user has chosen Continuous,
-they get Continuous in Letters, in Postcards, in Reading Mode, and in
-Writing Mode. The setting is one place, one choice, applied everywhere.
+Pagination Style intentionally does **not** vary by Mode or by Paper
+— those are independent axes. Once a user has chosen Continuous,
+they get Continuous on every paper (Letter, Postcard, any future
+preset), in Reading Mode, and in Writing Mode. The setting is one
+place, one choice, applied everywhere.
 
 The vocabulary in this codebase reserves the noun "Mode" for Reading
 vs Writing only; "Pagination Style" is the noun for Single Page vs
