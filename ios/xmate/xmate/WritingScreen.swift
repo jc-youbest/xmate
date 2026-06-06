@@ -154,14 +154,33 @@ struct WritingScreen: View {
         let pageToDelete = pages[deleteIndex]
         let newIndex = max(0, deleteIndex - 1)
 
-        // Animate toward the adjacent page, then delete.
         // dismantleUIView in PencilKitBridge flushes the departing page's
         // drawing before the PKCanvasView is torn down.
-        turningForward = false
         store.deletePage(pageToDelete, from: doc)
-        withAnimation(.easeInOut(duration: 0.18)) {
-            pages = store.pages(of: doc)
-            currentPageIndex = min(newIndex, pages.count - 1)
+        let newPages = store.pages(of: doc)
+        let safeIndex = min(newIndex, newPages.count - 1)
+
+        switch settings.paginationStyle {
+        case .singlePage:
+            // Slide toward the target page then swap content.
+            turningForward = false
+            withAnimation(.easeInOut(duration: 0.18)) {
+                pages = newPages
+                currentPageIndex = safeIndex
+            }
+
+        case .continuous:
+            // Update pages and index first so SwiftUI removes the deleted
+            // page from the ForEach. Then issue a one-way scroll signal to
+            // bring the target page into view. Without the scroll signal the
+            // content height shrinks but the scroll position stays fixed, so
+            // the viewport drifts to show whatever page fills the gap —
+            // not the intended target.
+            pages = newPages
+            currentPageIndex = safeIndex
+            if safeIndex < newPages.count {
+                scrollTarget = newPages[safeIndex].id
+            }
         }
     }
 

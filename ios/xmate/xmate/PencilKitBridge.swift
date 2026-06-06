@@ -183,12 +183,25 @@ struct PencilKitBridge: UIViewRepresentable {
 
         // Register with ToolPickerHost once, deferred one runloop tick so
         // the hosting view is fully laid out and the canvas has a window.
+        //
+        // becomeFirstResponder is called only when the host has no current
+        // anchor (needsFirstResponder == true). This prevents each newly-
+        // entering LazyVStack canvas from stealing FR away from the canvas
+        // the user is actively writing on. In Single Page mode the old
+        // canvas is always dismantled before the new one registers, so
+        // anchor is nil and the new canvas becomes FR correctly. In
+        // Continuous mode a canvas that enters view without an anchor
+        // (e.g. app launch, style switch) becomes FR; all later ones rely
+        // on PKCanvasView's own becomeFirstResponder-on-Pencil-touch to
+        // update the anchor when the user taps a different page.
         DispatchQueue.main.async {
             guard uiView.window != nil,
                   !context.coordinator.isRegistered else { return }
             context.coordinator.isRegistered = true
             ToolPickerHost.shared.register(uiView)
-            uiView.becomeFirstResponder()
+            if ToolPickerHost.shared.needsFirstResponder {
+                uiView.becomeFirstResponder()
+            }
         }
     }
 

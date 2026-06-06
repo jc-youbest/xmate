@@ -1,10 +1,23 @@
 // C-029 ToolPickerHost
 //
 // App-wide PKToolPicker singleton. Solves the "picker disappears in
-// Continuous mode" trap that caused stages 3.5–3.8 to fail.
+// Continuous mode" trap that caused stages 3.5–3.8 to fail, plus two
+// bugs found in hardware testing:
 //
-// Root cause of the trap
-// ──────────────────────
+//   Bug A — scheduleReanchor gave up after the first candidate even when
+//   becomeFirstResponder returned false, leaving anchor permanently nil.
+//   Fix: iterate all window-attached candidates until one succeeds.
+//
+//   Bug B — every canvas entering the LazyVStack viewport called
+//   becomeFirstResponder(), which forced the active anchor to resign FR
+//   → canvasResignedFirstResponder → anchor=nil → scheduleReanchor. If
+//   the new canvas's own become call then failed for any reason, anchor
+//   stayed nil. Fix: in Continuous mode only become FR when no anchor
+//   exists. PencilKitBridge checks needsFirstResponder before calling
+//   becomeFirstResponder from its deferred-registration block.
+//
+// Root cause of the original trap
+// ──────────────────────────────────
 // PKToolPicker only stays visible while a registered canvas is first
 // responder. In Continuous mode LazyVStack recycles canvases as the user
 // scrolls: iOS auto-resigns first responder on a canvas when it is
@@ -16,18 +29,18 @@
 // Architecture
 // ────────────
 // • One PKToolPicker for the app lifetime, owned here.
-// • Every XmateCanvasView (see below) registers via register(_:) when it
-//   enters a window, and deregisters via unregister(_:) from dismantleUIView.
+// • Every XmateCanvasView registers via register(_:) when it enters a
+//   window, and deregisters via unregister(_:) from dismantleUIView.
 // • register(_:) calls addObserver(_:) + setVisible(true, forFirstResponder:)
-//   so the picker follows first responder across all registered canvases.
+//   so the picker is primed to show for any registered canvas.
+// • PencilKitBridge calls becomeFirstResponder only when needsFirstResponder
+//   is true (no anchor), avoiding FR theft in Continuous mode.
 // • XmateCanvasView overrides becomeFirstResponder / resignFirstResponder
 //   to notify canvasBecameFirstResponder / canvasResignedFirstResponder.
-// • When the anchor resigns (window detach or otherwise), scheduleReanchor()
-//   posts a one-tick async check: if still no anchor, promote any live
-//   (window-attached) registered canvas to first responder.
+// • When the anchor resigns, scheduleReanchor() tries all window-attached
+//   registered canvases in turn until one accepts becomeFirstResponder.
 //
-// Thread safety: all methods must be called on the main thread. All callers
-// (SwiftUI lifecycle, UIKit delegate callbacks) already satisfy this.
+// Thread safety: all methods must be called on the main thread.
 
 import UIKit
 import PencilKit
@@ -73,6 +86,12 @@ final class ToolPickerHost {
     /// creates its own instance.
     let picker = PKToolPicker()
 
+    /// True when no canvas currently holds first responder in our tracking.
+    /// PencilKitBridge reads this before deciding whether to call
+    /// becomeFirstResponder after registration — avoids stealing FR in
+    /// Continuous mode when a live anchor already exists.
+    var needsFirstResponder: Bool { anchor == nil }
+
     // MARK: - Private state
 
     /// Weak references to all currently registered canvases. NSHashTable
@@ -87,8 +106,11 @@ final class ToolPickerHost {
 
     /// Register a canvas with the picker. Call once from PencilKitBridge's
     /// updateUIView deferred block, after confirming canvas.window != nil.
-    /// After calling this, call canvas.becomeFirstResponder() so the picker
-    /// becomes visible.
+    ///
+    /// After calling this, call canvas.becomeFirstResponder() only if
+    /// needsFirstResponder is true — otherwise the canvas is primed to show
+    /// the picker when it naturally becomes FR (e.g. Pencil tap) without
+    /// stealing FR from the currently active canvas.
     func register(_ canvas: XmateCanvasView) {
         canvases.add(canvas)
         picker.addObserver(canvas)
@@ -127,19 +149,26 @@ final class ToolPickerHost {
     // MARK: - Re-anchor
 
     /// Defers to the next runloop tick: if no canvas has taken first responder
-    /// by then, promotes the first window-attached registered canvas.
+    /// by then, tries each window-attached registered canvas in turn until one
+    /// accepts becomeFirstResponder.
+    ///
+    /// Iterating all candidates (rather than stopping after the first attempt)
+    /// handles the case where a canvas is still present in the hash table but
+    /// returns false from becomeFirstResponder — e.g. because it's in the
+    /// process of being detached. Checking the return value ensures we don't
+    /// silently give up on the first failed attempt and leave anchor nil.
     ///
     /// The one-tick delay handles the ordering trap: iOS resigns FR (step 1)
     /// before dismantleUIView (step 2), and a new canvas registers on its own
-    /// async tick (step 3). By the time this async block fires, step 3 may
-    /// have already produced a new anchor — the `anchor == nil` guard prevents
-    /// a redundant becomeFirstResponder call.
+    /// async tick (step 3). By the time this block fires, a new anchor may
+    /// already be set — the `anchor == nil` guard handles that.
     private func scheduleReanchor() {
         DispatchQueue.main.async { [weak self] in
             guard let self, anchor == nil else { return }
             for canvas in canvases.allObjects where canvas.window != nil {
-                _ = canvas.becomeFirstResponder()
-                return
+                if canvas.becomeFirstResponder() {
+                    return  // success — canvasBecameFirstResponder already set anchor
+                }
             }
         }
     }

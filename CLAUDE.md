@@ -87,7 +87,7 @@ built on.
 
 ## Tech Stack
 
-- Platform: iPadOS, latest two major versions supported.
+- Platform: iPadOS 18.0+. iOS 18 is the minimum deployment target.
 - Language: Swift; SwiftUI for UI, UIKit where SwiftUI gaps exist.
 - Drawing: PencilKit (Apple's official handwriting framework).
 - Local storage: Core Data, stored in `Library/Application Support/` (app-private, not exposed to the Files app).
