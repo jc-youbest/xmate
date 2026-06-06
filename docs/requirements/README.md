@@ -43,7 +43,7 @@ Status legend: `_not yet written_` < `(Draft)` < `(In Design)` < `(Implemented)`
 - F-053 Page geometry and zoom — [`F-053-page-geometry-and-zoom.md`](F-053-page-geometry-and-zoom.md) (Draft)
 - F-054 Insert media while writing — [`F-054-insert-media-while-writing.md`](F-054-insert-media-while-writing.md) (Draft)
 - F-055 Social screen v1 stub — [`F-055-social-screen-v1-stub.md`](F-055-social-screen-v1-stub.md) (Draft)
-- F-056 Pagination style — [`F-056-pagination-style.md`](F-056-pagination-style.md) (Draft)
+- F-056 Pagination style — [`F-056-pagination-style.md`](F-056-pagination-style.md) (Implemented)
 
 ## Account & Cloud
 

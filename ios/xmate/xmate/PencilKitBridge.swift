@@ -1,21 +1,27 @@
 // C-002 PencilKitBridge
 //
-// SwiftUI wrapper around PKCanvasView.
+// SwiftUI wrapper around XmateCanvasView (a PKCanvasView subclass).
 //
 // Drawing policy: .pencilOnly — fingers are reserved for navigation (F-001,
-// F-051). Two UISwipeGestureRecognizers (up / down, finger-only) are added
-// to the canvas so WritingScreen can drive page turns.
+// F-051). In Single Page mode two UISwipeGestureRecognizers (up/down,
+// finger-only) are added to the canvas so WritingScreen can drive page turns.
+// In Continuous mode onSwipeUp/onSwipeDown are nil and no gesture recognisers
+// are added — they would fight the enclosing ScrollView's pan gesture.
 //
-// Lifecycle with page turning: WritingScreen passes `.id(page.id)` on the
-// bridge, so SwiftUI creates a fresh PKCanvasView for each page. Each
-// makeUIView loads the page's saved drawing. dismantleUIView flushes any
-// pending strokes before the view is torn down, so no strokes are lost on
-// a fast page turn.
+// Tool picker: owned by C-029 ToolPickerHost (app-wide singleton). This bridge
+// registers its canvas with ToolPickerHost in updateUIView (once the canvas
+// has a window) and deregisters in dismantleUIView. The picker therefore stays
+// visible across the LazyVStack recycling that Continuous mode performs.
+//
+// Lifecycle with page turning / recycling:
+//   makeUIView      — creates canvas, loads saved drawing.
+//   updateUIView    — deferred once: register with ToolPickerHost + becomeFirstResponder.
+//   dismantleUIView — flush pending strokes; unregister from ToolPickerHost.
+//                     iOS has already resigned first responder on the canvas
+//                     before SwiftUI fires dismantleUIView (window-detach order).
 //
 // The canvas is a bounded sheet: scrolling is disabled and the logical page
 // maps 1:1 to the view's bounds (F-053 bounded-page model).
-//
-// The system PKToolPicker covers F-002..F-007.
 
 import SwiftUI
 import PencilKit
@@ -25,16 +31,16 @@ struct PencilKitBridge: UIViewRepresentable {
     let page: Page
     let store: NoteStore
 
-    /// Called when the user swipes up with a finger — advance to next page.
+    /// Finger-swipe callbacks for Single Page navigation (F-051).
+    /// Pass nil in Continuous mode — no gesture recognisers are added,
+    /// which prevents interference with the enclosing ScrollView.
     var onSwipeUp: (() -> Void)?
-    /// Called when the user swipes down with a finger — retreat to previous page.
     var onSwipeDown: (() -> Void)?
 
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
-        var toolPicker: PKToolPicker?
-        weak var canvas: PKCanvasView?
+        weak var canvas: XmateCanvasView?
         var page: Page?
         var store: NoteStore?
 
@@ -43,6 +49,10 @@ struct PencilKitBridge: UIViewRepresentable {
 
         var saveWorkItem: DispatchWorkItem?
         private var backgroundObserver: NSObjectProtocol?
+
+        /// True once the canvas has been registered with ToolPickerHost.
+        /// Prevents duplicate registration on subsequent updateUIView calls.
+        var isRegistered: Bool = false
 
         override init() {
             super.init()
@@ -71,7 +81,7 @@ struct PencilKitBridge: UIViewRepresentable {
 
         // MARK: Gesture targets
 
-        @objc func handleSwipeUp() { onSwipeUp?() }
+        @objc func handleSwipeUp()   { onSwipeUp?()   }
         @objc func handleSwipeDown() { onSwipeDown?() }
 
         // MARK: Save helpers
@@ -87,8 +97,8 @@ struct PencilKitBridge: UIViewRepresentable {
         /// Encode and persist the current canvas drawing to Core Data.
         func saveNow() {
             guard let canvas = canvas,
-                  let page = page,
-                  let store = store else { return }
+                  let page   = page,
+                  let store  = store else { return }
             let data = StrokeSerializer.encode(canvas.drawing)
             store.savePageDrawing(data, page: page)
         }
@@ -98,8 +108,8 @@ struct PencilKitBridge: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = PKCanvasView()
+    func makeUIView(context: Context) -> XmateCanvasView {
+        let canvas = XmateCanvasView()
         canvas.backgroundColor = .white
         canvas.isOpaque = true
 
@@ -117,76 +127,90 @@ struct PencilKitBridge: UIViewRepresentable {
         canvas.tool = PKInkingTool(.pen, color: .black, width: 4)
         canvas.delegate = context.coordinator
         context.coordinator.canvas = canvas
-        context.coordinator.page = page
-        context.coordinator.store = store
+        context.coordinator.page   = page
+        context.coordinator.store  = store
 
         // Restore saved drawing for this page.
         if let data = page.drawingData, let drawing = StrokeSerializer.decode(data) {
             canvas.drawing = drawing
         }
 
-        // Finger-only swipe recognisers for page turning (F-051).
-        // allowedTouchTypes = [.direct] excludes Apple Pencil (UITouch.TouchType.stylus).
-        let fingerOnly: [NSNumber] = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        // Finger-only swipe recognisers for page turning in Single Page mode.
+        // Skipped entirely when callbacks are nil (Continuous mode) — adding
+        // them would interfere with the enclosing ScrollView's pan gesture.
+        if onSwipeUp != nil || onSwipeDown != nil {
+            // allowedTouchTypes = [.direct] excludes Apple Pencil.
+            let fingerOnly: [NSNumber] = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
 
-        let swipeUp = UISwipeGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleSwipeUp)
-        )
-        swipeUp.direction = .up
-        swipeUp.allowedTouchTypes = fingerOnly
-        // cancelsTouchesInView = false so the PKCanvasView still receives
-        // the touch for other purposes (e.g. tap-to-focus).
-        swipeUp.cancelsTouchesInView = false
-        canvas.addGestureRecognizer(swipeUp)
+            if onSwipeUp != nil {
+                let swipeUp = UISwipeGestureRecognizer(
+                    target: context.coordinator,
+                    action: #selector(Coordinator.handleSwipeUp)
+                )
+                swipeUp.direction = .up
+                swipeUp.allowedTouchTypes = fingerOnly
+                // cancelsTouchesInView = false so the PKCanvasView still receives
+                // the touch for other purposes (e.g. tap-to-focus).
+                swipeUp.cancelsTouchesInView = false
+                canvas.addGestureRecognizer(swipeUp)
+            }
 
-        let swipeDown = UISwipeGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleSwipeDown)
-        )
-        swipeDown.direction = .down
-        swipeDown.allowedTouchTypes = fingerOnly
-        swipeDown.cancelsTouchesInView = false
-        canvas.addGestureRecognizer(swipeDown)
+            if onSwipeDown != nil {
+                let swipeDown = UISwipeGestureRecognizer(
+                    target: context.coordinator,
+                    action: #selector(Coordinator.handleSwipeDown)
+                )
+                swipeDown.direction = .down
+                swipeDown.allowedTouchTypes = fingerOnly
+                swipeDown.cancelsTouchesInView = false
+                canvas.addGestureRecognizer(swipeDown)
+            }
+        }
 
         return canvas
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+    func updateUIView(_ uiView: XmateCanvasView, context: Context) {
         // Re-apply on update — on real devices, drawingPolicy can fail to
         // take effect before the view enters the window hierarchy.
         uiView.drawingPolicy = .pencilOnly
         uiView.isScrollEnabled = false
 
         // Keep coordinator callbacks current.
-        context.coordinator.onSwipeUp = onSwipeUp
+        context.coordinator.onSwipeUp   = onSwipeUp
         context.coordinator.onSwipeDown = onSwipeDown
-        context.coordinator.store = store
+        context.coordinator.store       = store
 
-        // Attach the system tool picker once the canvas is in a window.
-        // Deferred one runloop tick so the hosting view is fully laid out
-        // before the picker attaches and the canvas becomes first responder.
+        // Register with ToolPickerHost once, deferred one runloop tick so
+        // the hosting view is fully laid out and the canvas has a window.
         DispatchQueue.main.async {
             guard uiView.window != nil,
-                  context.coordinator.toolPicker == nil else { return }
-            let picker = PKToolPicker()
-            picker.addObserver(uiView)
-            picker.setVisible(true, forFirstResponder: uiView)
+                  !context.coordinator.isRegistered else { return }
+            context.coordinator.isRegistered = true
+            ToolPickerHost.shared.register(uiView)
             uiView.becomeFirstResponder()
-            context.coordinator.toolPicker = picker
         }
     }
 
-    /// Called by SwiftUI when the view is removed from the hierarchy — either
-    /// on page turn (because WritingScreen uses .id(page.id)) or on app exit.
-    /// Flush any pending strokes so a fast page turn never loses drawing work.
-    static func dismantleUIView(_ uiView: PKCanvasView, coordinator: Coordinator) {
+    /// Called by SwiftUI when the view is removed from the hierarchy — on page
+    /// turn (Single Page uses .id(page.id)), on LazyVStack recycling (Continuous
+    /// mode), or on app exit.
+    ///
+    /// iOS first-responder / dismantleUIView ordering: iOS resigns first
+    /// responder on the canvas when it detaches from the window, BEFORE SwiftUI
+    /// calls dismantleUIView. XmateCanvasView.resignFirstResponder already
+    /// notified ToolPickerHost and scheduled a re-anchor. Here we only flush
+    /// strokes and remove the canvas from the host registry.
+    static func dismantleUIView(_ uiView: XmateCanvasView, coordinator: Coordinator) {
         coordinator.saveWorkItem?.cancel()
         coordinator.saveWorkItem = nil
         if let page = coordinator.page, let store = coordinator.store {
             let data = StrokeSerializer.encode(uiView.drawing)
             store.savePageDrawing(data, page: page)
         }
-        coordinator.toolPicker = nil
+        if coordinator.isRegistered {
+            ToolPickerHost.shared.unregister(uiView)
+            coordinator.isRegistered = false
+        }
     }
 }

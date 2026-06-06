@@ -35,3 +35,4 @@ When a component's spec grows beyond one row, move it to its own file at
 | C-026 | PlaybackRenderer | Render recorded strokes as video or GIF |
 | C-027 | PageGeometry | PaperSize struct + named PaperPresets and fit-to-viewport scale (F-053) |
 | C-028 | SettingsStore | Global app preferences (Pagination Style, etc.) persisted via UserDefaults (F-056) |
+| C-029 | ToolPickerHost | App-wide PKToolPicker singleton; registers/unregisters XmateCanvasView instances, re-anchors first responder across LazyVStack recycling in Continuous mode (F-056) |

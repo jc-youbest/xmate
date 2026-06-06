@@ -1,9 +1,10 @@
 // U-102 WritingTopBar
 //
-// Thin top bar for writing mode (F-051). Contains:
-//   U-093 PageIndicator  — current position, e.g. "1 / 3"
-//   U-095 AddPageButton  — appends a new blank page
-//   U-103 WritingOverflowMenu — modal: delete page, delete document
+// Thin top bar for writing mode (F-051 / F-056). Contains:
+//   U-093 PageIndicator       — current position, e.g. "1 / 3"
+//   U-095 AddPageButton       — appends a new blank page
+//   U-103 WritingOverflowMenu — modal: pagination style, delete page, delete document
+//     └ U-111 PaginationStylePicker — Picker toggling Single Page ↔ Continuous (F-056)
 //
 // Layout: indicator on the left, buttons on the right.
 // Background: .bar material so it reads clearly against any page background.
@@ -14,6 +15,9 @@ struct WritingTopBar: View {
     /// 0-based index of the currently displayed page.
     let currentIndex: Int
     let pageCount: Int
+
+    /// Global pagination style — reflected and updated by U-111 PaginationStylePicker.
+    @Binding var paginationStyle: PaginationStyle
 
     let onAddPage: () -> Void
     let onDeletePage: () -> Void
@@ -42,6 +46,18 @@ struct WritingTopBar: View {
 
             // U-103 WritingOverflowMenu
             Menu {
+
+                // U-111 PaginationStylePicker — toggle between Single Page and Continuous.
+                // A SwiftUI Picker inside a Menu renders as an inline radio group.
+                Picker("Pagination", selection: $paginationStyle) {
+                    Label("Single Page", systemImage: "doc")
+                        .tag(PaginationStyle.singlePage)
+                    Label("Continuous", systemImage: "scroll")
+                        .tag(PaginationStyle.continuous)
+                }
+
+                Divider()
+
                 // "Delete Page" is disabled when there is only one page.
                 Button(role: .destructive, action: onDeletePage) {
                     Label("Delete Page", systemImage: "trash")
@@ -70,6 +86,7 @@ struct WritingTopBar: View {
         WritingTopBar(
             currentIndex: 1,
             pageCount: 5,
+            paginationStyle: .constant(.singlePage),
             onAddPage: {},
             onDeletePage: {},
             onDeleteDocument: {}

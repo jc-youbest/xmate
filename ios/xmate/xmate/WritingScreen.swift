@@ -1,49 +1,38 @@
 // U-101 WritingScreen
 //
 // The writing-mode screen for roadmap stage v1 (F-051) — the writing
-// variant of the Content Screen. v1 stage 2 introduces fixed-size
-// logical pages (F-053) projected onto each iPad's screen.
+// variant of the Content Screen.
 //
 // Layout:
-//   U-102 WritingTopBar    — thin top bar (page indicator, add, overflow menu)
-//   U-023 Canvas           — active drawing surface via C-002 PencilKitBridge,
-//                            sized to the document's logical page (C-027
-//                            PageGeometry) and uniformly scaled to fit the
-//                            available area, centered horizontally and
-//                            vertically.
+//   U-102 WritingTopBar   — thin top bar (page indicator, add, overflow menu)
+//   Canvas area           — routed to SinglePagesView or ContinuousPagesView
+//                           based on C-028 SettingsStore.paginationStyle (F-056)
 //
-// Page navigation (F-051):
-//   • Finger swipe up   → next page  (gesture inside PencilKitBridge)
-//   • Finger swipe down → previous page
-//   • Only Apple Pencil draws; finger is reserved for navigation (F-001).
+// Pagination Style routing (F-056, stage 3):
+//   .singlePage  → SinglePagesView: one full page, finger swipe to flip.
+//   .continuous  → ContinuousPagesView: free-scroll LazyVStack with 20 pt
+//                  inter-page gaps and geometric current-page detection.
 //
-// Page identity: PencilKitBridge is keyed with .id(currentPage?.id) — the
-// page's UUID. Changing currentPage always creates a fresh PKCanvasView with
-// the new page's saved drawing. dismantleUIView in PencilKitBridge flushes
-// the departing page before teardown, so no strokes are ever lost on a fast
-// page turn.
+// Current page index is shared between both layouts via @State. In Single
+// Page mode it is set by swipe handlers; in Continuous mode it is derived
+// from scroll geometry via onScrollGeometryChange (iOS 18+).
 //
-// Geometry (stage 2, F-053):
-//   The PencilKitBridge is framed at the document's paper dimensions
-//   (C-027 PaperPreset.letter for letters), then visually scaled with
-//   .scaleEffect(fitScale) to fit the viewport. Apple Pencil input
-//   lands at logical coordinates regardless of fitScale, so strokes
-//   are stored and reload identically on any iPad.
+// Add Page in Continuous mode uses a one-way scrollTarget UUID signal:
+// WritingScreen sets it; ContinuousPagesView scrolls and clears it.
+// .scrollPosition(id:) is deliberately avoided — its bidirectional binding
+// silently snaps to the binding value and creates a perpetual snap loop.
 //
-// Orientation: the app is locked to portrait at the Info.plist level for
-// stage 2. When a non-portrait paper (e.g. PaperPreset.postcard) arrives
-// — with the Core Data migration that records each document's paper
-// dimensions — orientation will become per-screen, derived from
-// `paper.orientationLock`.
+// Delete document (v1 stub): resets to a single blank page. F-011 will
+// replace this with navigation to U-002 NoteListScreen in v3.
 //
-// Delete document (v1 stub): resets to a single blank page instead of
-// navigating to a note list, because U-002 NoteListScreen does not exist
-// until v3. F-011 will replace this with proper navigation.
+// Paper: hard-coded to PaperPreset.letter for stage 3. Per-document paper
+// arrives with a Core Data migration in a later increment.
 
 import SwiftUI
 
 struct WritingScreen: View {
     @EnvironmentObject var store: NoteStore
+    @EnvironmentObject var settings: SettingsStore
 
     // MARK: - State
 
@@ -51,18 +40,17 @@ struct WritingScreen: View {
     @State private var pages: [Page] = []
     @State private var currentPageIndex: Int = 0
 
-    /// Direction of the most recent page turn; drives the slide transition edge.
+    /// Direction of the most recent page turn; drives the slide transition
+    /// edge in Single Page mode.
     @State private var turningForward: Bool = true
+
+    /// One-way scroll signal for Continuous mode Add Page.
+    /// WritingScreen sets this to the new page's UUID; ContinuousPagesView
+    /// scrolls there and calls the consumed callback to clear it.
+    @State private var scrollTarget: UUID?
 
     @State private var showDeletePageAlert: Bool = false
     @State private var showDeleteDocumentAlert: Bool = false
-
-    // MARK: - Derived
-
-    private var currentPage: Page? {
-        guard !pages.isEmpty, currentPageIndex < pages.count else { return nil }
-        return pages[currentPageIndex]
-    }
 
     // MARK: - Body
 
@@ -74,59 +62,39 @@ struct WritingScreen: View {
                 WritingTopBar(
                     currentIndex: currentPageIndex,
                     pageCount: pages.count,
+                    paginationStyle: $settings.paginationStyle,
                     onAddPage: handleAddPage,
                     onDeletePage: { showDeletePageAlert = true },
                     onDeleteDocument: { showDeleteDocumentAlert = true }
                 )
             }
 
-            // U-023 Canvas area — fixed-size logical page projected onto
-            // the available viewport via C-002 PencilKitBridge and
-            // C-027 PageGeometry (F-053 stage 2).
-            //
-            // Stage 2 (letter only): paper is hard-coded to
-            // PaperPreset.letter. When per-document paper arrives
-            // (Core Data migration adds paperWidth/paperHeight), read
-            // them from the current document instead.
-            GeometryReader { proxy in
-                let paper: PaperSize = PaperPreset.letter
-                let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
+            // Canvas area — routed by Pagination Style.
+            // Both views share the same currentPageIndex binding so the
+            // PageIndicator in WritingTopBar stays in sync regardless of style.
+            Group {
+                switch settings.paginationStyle {
 
-                ZStack {
-                    if let page = currentPage {
-                        PencilKitBridge(
-                            page: page,
-                            store: store,
-                            onSwipeUp: handleSwipeUp,
-                            onSwipeDown: handleSwipeDown
-                        )
-                        // Frame the canvas at the paper's logical
-                        // dimensions — PKCanvasView records strokes in
-                        // this coordinate space, so the same drawing
-                        // data re-loads identically on any iPad.
-                        .frame(width: paper.width, height: paper.height)
-                        // Project the logical page onto the viewport
-                        // by a uniform scale that preserves aspect.
-                        .scaleEffect(fitScale)
-                        // Slide the incoming page in from the correct
-                        // edge; .id-driven recreation triggers the
-                        // transition on every page change.
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: turningForward ? .bottom : .top),
-                                removal:   .move(edge: turningForward ? .top   : .bottom)
-                            )
-                        )
-                        .id(page.id)
-                    }
+                case .singlePage:
+                    SinglePagesView(
+                        pages: pages,
+                        paper: PaperPreset.letter,
+                        store: store,
+                        currentPageIndex: $currentPageIndex,
+                        turningForward: $turningForward
+                    )
+
+                case .continuous:
+                    ContinuousPagesView(
+                        pages: pages,
+                        paper: PaperPreset.letter,
+                        store: store,
+                        currentPageIndex: $currentPageIndex,
+                        scrollTarget: scrollTarget,
+                        onScrollTargetConsumed: { scrollTarget = nil }
+                    )
                 }
-                // Center the scaled page in the viewport. Letterbox
-                // strips on the leftover area inherit the screen
-                // background.
-                .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            // Extend the canvas area below the home indicator so the
-            // PKToolPicker floats above full writable space.
             .ignoresSafeArea(edges: .bottom)
         }
         .onAppear(perform: loadDocument)
@@ -157,33 +125,26 @@ struct WritingScreen: View {
         currentPageIndex = 0
     }
 
-    // MARK: - Navigation
-
-    private func handleSwipeUp() {
-        guard currentPageIndex < pages.count - 1 else { return }
-        turningForward = true
-        withAnimation(.easeInOut(duration: 0.18)) {
-            currentPageIndex += 1
-        }
-    }
-
-    private func handleSwipeDown() {
-        guard currentPageIndex > 0 else { return }
-        turningForward = false
-        withAnimation(.easeInOut(duration: 0.18)) {
-            currentPageIndex -= 1
-        }
-    }
-
     // MARK: - Page CRUD (F-051)
 
     private func handleAddPage() {
         guard let doc = document else { return }
-        store.appendPage(to: doc)
+        let newPage = store.appendPage(to: doc)
         pages = store.pages(of: doc)
-        turningForward = true
-        withAnimation(.easeInOut(duration: 0.18)) {
-            currentPageIndex = pages.count - 1
+        let newIndex = pages.count - 1
+
+        switch settings.paginationStyle {
+        case .singlePage:
+            turningForward = true
+            withAnimation(.easeInOut(duration: 0.18)) {
+                currentPageIndex = newIndex
+            }
+        case .continuous:
+            // Optimistic index update so PageIndicator reflects the new page
+            // immediately; geometric calculation will confirm it after scroll.
+            currentPageIndex = newIndex
+            // One-way scroll signal — ContinuousPagesView clears it after firing.
+            scrollTarget = newPage.id
         }
     }
 
@@ -217,4 +178,5 @@ struct WritingScreen: View {
 #Preview {
     WritingScreen()
         .environmentObject(NoteStore.shared)
+        .environmentObject(SettingsStore.shared)
 }

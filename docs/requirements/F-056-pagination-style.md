@@ -9,7 +9,7 @@ are laid out and navigated.
 Pagination Style is independent of Mode (Reading vs Writing — F-053
 Notes) and of Paper (the document's dimensions, F-053). It composes
 with both: a Letter (portrait paper) in Writing Mode + Continuous
-gives vertical scroll with snap; a Postcard (landscape paper) in
+gives vertical free scroll; a Postcard (landscape paper) in
 Reading Mode + Continuous gives horizontal free scroll with two
 pages partly visible.
 
@@ -35,48 +35,41 @@ PaginationStylePicker:
 - C-028 SettingsStore writes the new `paginationStyle` value to
   UserDefaults.
 - The current Content Screen re-renders immediately in the new style,
-  preserving the current page (the new layout scrolls to or snaps to
-  that page).
+  preserving the current page.
 - All future Content Screen sessions, on this and any other document,
   open in the new style until the user changes it again.
 
 When U-101 WritingScreen is rendered with `paginationStyle == .singlePage`:
 - The screen shows exactly one page at a time, centered and fit-scaled
-  per F-053. Page navigation uses finger swipes along
-  `paper.paginationAxis` (F-051). This is the v1 stage-2 behaviour.
+  per F-053 (`PageGeometry.fitScale`). Page navigation uses finger
+  swipes along `paper.paginationAxis` (F-051). This is the v1 stage-2
+  behaviour (SinglePagesView).
 
-When U-101 WritingScreen is rendered with `paginationStyle == .continuous`
-in Writing Mode:
-- Pages stack along `paper.paginationAxis` inside a scroll container.
-  Each page is fit-scaled per F-053 to the cross-axis viewport
-  dimension (width for portrait paper, height for landscape paper),
-  leaving the main axis free for scrolling.
+When U-101 WritingScreen is rendered with `paginationStyle == .continuous`:
+- Pages stack along `paper.paginationAxis` inside a free-scrolling
+  ScrollView (ContinuousPagesView). Each page is scaled to the
+  cross-axis viewport dimension (`PageGeometry.continuousFitScale`):
+  width for portrait paper, height for landscape paper.
 - The user scrolls with a finger pan or a fast swipe; PKCanvasView's
   `drawingPolicy = .pencilOnly` keeps Pencil reserved for writing.
-- When the scroll comes to rest, the container **snaps** to the nearest
-  page boundary, so the writing surface is always a single steady page.
-  Snap animation: ease-out, ~0.25 s.
-- The "current page" is defined as the snapped-to page. U-093
-  PageIndicator updates after each snap.
-- U-095 AddPageButton appends after the current snapped page (same as
-  Single Page).
-
-When U-101 WritingScreen is rendered with `paginationStyle == .continuous`
-in Reading Mode (deferred — Reading Mode lands in a later increment):
-- Pages stack along `paper.paginationAxis` in the same way, but the
-  scroll **does not snap** — it decelerates freely. Two adjacent pages
-  can be partly visible simultaneously, with the page gap clearly
-  readable as a boundary.
-- "Current page" has no meaningful definition; U-093 PageIndicator
-  shows the page closest to the viewport center, updated live.
+- **No snap, no auto-alignment, ever.** Natural deceleration only. A
+  state with two half-pages and the inter-page gap visible is a valid
+  resting state, not a transient one. This applies in both Writing Mode
+  and Reading Mode.
+- "Current page" is defined geometrically: whichever page's centre is
+  closest to the viewport centre along the scroll axis. Computed live
+  via `.onScrollGeometryChange` (iOS 18+). U-093 PageIndicator and
+  Delete Page both operate on this geometric current page.
+- U-095 AddPageButton appends a blank page at the end and scrolls to
+  it via a one-way UUID signal + `ScrollViewReader.scrollTo`.
 
 When the user adds or deletes a page while in Continuous:
-- The scroll container expands or contracts accordingly; the focus
-  page stays under the user's view if possible.
+- The scroll container expands or contracts; the focus page stays
+  under the user's view if possible.
 
 ## Visual Spec for Continuous
 
-- **Inter-page gap**: 20 pt (in fit-scaled coordinates), filled with
+- **Inter-page gap**: 20 pt (in display coordinates), filled with
   the system secondary background colour
   (`Color(.systemGroupedBackground)`).
 - **Page edge shadow**: each page gets a 4 pt drop shadow, opacity
@@ -86,7 +79,7 @@ When the user adds or deletes a page while in Continuous:
   Page position is conveyed by U-093 PageIndicator in the top bar
   only.
 - **Letterbox** (the area outside the fit-scaled page on the cross
-  axis) keeps the same screen background colour as the page gap —
+  axis) keeps the same background colour as the page gap —
   visually the page sits on a continuous neutral field.
 
 ## Persistence
@@ -96,6 +89,39 @@ When the user adds or deletes a page while in Continuous:
   (`xmate.paginationStyle`), restored on app launch.
 - Default for first-launch / unset value: `.singlePage`.
 
+## Architecture Notes (from stage 3 implementation)
+
+### No snap — permanent decision
+
+The original spec described snap-on-rest in Writing Mode. This is
+permanently removed. Attempting snap via `.scrollTargetBehavior` cuts
+momentum and fails on zero-velocity releases; attempting it via
+`.scrollPosition(id:)` creates a perpetual snap loop because the
+binding is bidirectional — writing the "current page id" from a scroll
+observer into a `.scrollPosition(id:)` binding causes the ScrollView
+to immediately re-scroll to that position on every geometry change.
+Free scroll is the correct and final design for both modes.
+
+### Programmatic scroll — one-way only
+
+Add Page in Continuous mode uses a one-way UUID signal: WritingScreen
+sets `scrollTarget`; ContinuousPagesView calls
+`scrollProxy.scrollTo(target)` and clears the signal. No binding
+write-back. This is the only safe programmatic scroll path.
+
+### PKToolPicker — C-029 ToolPickerHost
+
+Multiple per-canvas PKToolPicker instances cannot coexist — they fight
+for first responder and are destroyed by LazyVStack recycling. The
+solution is one app-wide picker owned by C-029 ToolPickerHost. Every
+canvas registers on entry and deregisters on exit. When the anchor
+canvas loses first responder (iOS resigns it on window detach, before
+SwiftUI's `dismantleUIView`), ToolPickerHost schedules a re-anchor to
+another live canvas in the next runloop tick. XmateCanvasView (a
+PKCanvasView subclass) overrides `becomeFirstResponder` /
+`resignFirstResponder` to notify ToolPickerHost — the only reliable
+way to track which canvas holds Pencil focus among several visible ones.
+
 ## Notes
 
 The two Pagination Styles are deliberately equal — neither is the
@@ -103,8 +129,7 @@ The two Pagination Styles are deliberately equal — neither is the
 sheet" mental model and is the default precisely because that mental
 model is the product's core identity. Continuous is for users who want
 to skim or flow through a multi-page letter without breaking it into
-discrete page turns; the snap-on-write rule preserves a stable writing
-surface inside that style.
+discrete page turns.
 
 Pagination Style intentionally does **not** vary by Mode or by Paper
 — those are independent axes. Once a user has chosen Continuous,
