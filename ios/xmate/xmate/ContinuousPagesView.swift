@@ -97,6 +97,23 @@ struct ContinuousPagesView: View {
                 }
                 .background(Color(.systemGroupedBackground))
 
+                // ── Restore scroll position on appear ─────────────────────
+                // When the user switches from Single Page to Continuous,
+                // ContinuousPagesView is newly created and the ScrollView
+                // starts at offset 0. currentPageIndex already holds the
+                // correct page; scroll there instantly (no animation) so
+                // the user lands on the same page they were reading.
+                // The async defer gives SwiftUI one layout pass to compute
+                // content size before scrollTo fires.
+                .onAppear {
+                    guard currentPageIndex > 0,
+                          currentPageIndex < pages.count else { return }
+                    DispatchQueue.main.async {
+                        scrollProxy.scrollTo(pages[currentPageIndex].id,
+                                             anchor: .center)
+                    }
+                }
+
                 // ── Current-page detection (iOS 18+) ──────────────────────
                 // Maps scroll geometry to the page index whose centre is
                 // nearest the viewport centre along the scroll axis.
