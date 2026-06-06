@@ -109,18 +109,29 @@ sets `scrollTarget`; ContinuousPagesView calls
 `scrollProxy.scrollTo(target)` and clears the signal. No binding
 write-back. This is the only safe programmatic scroll path.
 
-### PKToolPicker — C-029 ToolPickerHost
+### PKToolPicker — C-029 ToolPickerHost, and why plain VStack
 
 Multiple per-canvas PKToolPicker instances cannot coexist — they fight
-for first responder and are destroyed by LazyVStack recycling. The
-solution is one app-wide picker owned by C-029 ToolPickerHost. Every
-canvas registers on entry and deregisters on exit. When the anchor
-canvas loses first responder (iOS resigns it on window detach, before
-SwiftUI's `dismantleUIView`), ToolPickerHost schedules a re-anchor to
-another live canvas in the next runloop tick. XmateCanvasView (a
-PKCanvasView subclass) overrides `becomeFirstResponder` /
-`resignFirstResponder` to notify ToolPickerHost — the only reliable
-way to track which canvas holds Pencil focus among several visible ones.
+for first responder and render duplicate picker UIs.
+
+The solution is one app-wide picker in C-029 ToolPickerHost, registered
+with all live canvases. The critical constraint: PKToolPicker associates
+with specific UIResponder instances. When a canvas leaves the window
+hierarchy, iOS resigns its first responder BEFORE SwiftUI's
+`dismantleUIView` fires, and no reliable recovery path exists on real
+hardware (re-priming `setVisible` after the fact does not work).
+
+Therefore ContinuousPagesView uses a plain VStack, not LazyVStack. All
+canvases are permanently in the hierarchy; no canvas is ever unexpectedly
+removed during scrolling. The only removal scenario is explicit page
+deletion, for which ToolPickerHost's `scheduleReanchor` promotes the
+adjacent live canvas. For bounded stationery documents (letters,
+postcards) the memory cost of keeping all canvases alive is acceptable.
+
+XmateCanvasView (a PKCanvasView subclass) overrides `becomeFirstResponder`
+and `resignFirstResponder` to notify ToolPickerHost — the only reliable
+way to track which of several simultaneously visible canvases holds
+Pencil focus.
 
 ## Notes
 

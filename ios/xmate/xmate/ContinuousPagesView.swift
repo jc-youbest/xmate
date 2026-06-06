@@ -6,6 +6,14 @@
 //
 // Key design choices (informed by failed stages 3.5–3.8)
 // ───────────────────────────────────────────────────────
+// PLAIN VSTACK (not LazyVStack) — all canvases permanently in the hierarchy.
+//   • LazyVStack recycles views out of the window when they leave the
+//     viewport. PKToolPicker associates with specific UIResponder instances;
+//     when iOS resigns first responder on window-detach, no reliable recovery
+//     path exists on real hardware. Plain VStack eliminates this at the root.
+//   • For bounded stationery documents (letters, postcards) the memory cost
+//     of keeping all canvases alive is acceptable.
+//
 // FREE SCROLL — no snap, no auto-alignment, ever.
 //   • .scrollTargetBehavior is not used: it cuts momentum and the viewAligned
 //     variant does not fire on zero-velocity releases.
@@ -26,8 +34,8 @@
 //
 // TOOL PICKER — stays alive via C-029 ToolPickerHost.
 //   • Each PencilKitBridge registers/deregisters with ToolPickerHost.
-//   • ToolPickerHost re-anchors first responder when the current anchor
-//     canvas leaves the screen (LazyVStack recycling).
+//   • With plain VStack the only removal scenario is page deletion;
+//     ToolPickerHost re-anchors to the adjacent live canvas.
 //   • onSwipeUp/onSwipeDown are nil → PencilKitBridge skips the
 //     UISwipeGestureRecognizer additions that would fight the ScrollView.
 
@@ -68,7 +76,7 @@ struct ContinuousPagesView: View {
                            showsIndicators: false) {
 
                     if vertical {
-                        LazyVStack(spacing: gapPt) {
+                        VStack(spacing: gapPt) {
                             pageItems(fitScale: fitScale,
                                       scaledW: scaledW,
                                       scaledH: scaledH)
@@ -78,7 +86,7 @@ struct ContinuousPagesView: View {
                         .padding(.vertical, gapPt)
                         .frame(maxWidth: .infinity)
                     } else {
-                        LazyHStack(spacing: gapPt) {
+                        HStack(spacing: gapPt) {
                             pageItems(fitScale: fitScale,
                                       scaledW: scaledW,
                                       scaledH: scaledH)

@@ -1,44 +1,29 @@
 // C-029 ToolPickerHost
 //
-// App-wide PKToolPicker singleton. Solves the "picker disappears in
-// Continuous mode" trap that caused stages 3.5–3.8 to fail, plus two
-// bugs found in hardware testing:
+// App-wide PKToolPicker singleton.
 //
-//   Bug A — scheduleReanchor gave up after the first candidate even when
-//   becomeFirstResponder returned false, leaving anchor permanently nil.
-//   Fix: iterate all window-attached candidates until one succeeds.
+// ContinuousPagesView uses a plain VStack (not LazyVStack) so all page
+// canvases are permanently in the window hierarchy. This is a deliberate
+// architectural choice: PKToolPicker associates with specific UIResponder
+// instances via addObserver(_:) and setVisible(true, forFirstResponder:).
+// LazyVStack recycles canvases out of the hierarchy — iOS resigns first
+// responder on window-detach, and no reliable recovery exists on real
+// hardware. Plain VStack eliminates the problem at the root.
 //
-//   Bug B — every canvas entering the LazyVStack viewport called
-//   becomeFirstResponder(), which forced the active anchor to resign FR
-//   → canvasResignedFirstResponder → anchor=nil → scheduleReanchor. If
-//   the new canvas's own become call then failed for any reason, anchor
-//   stayed nil. Fix: in Continuous mode only become FR when no anchor
-//   exists. PencilKitBridge checks needsFirstResponder before calling
-//   becomeFirstResponder from its deferred-registration block.
+// With multiple live canvases, one shared PKToolPicker is registered with
+// all of them. This host:
+//   • Tracks which canvas currently holds first responder (anchor).
+//   • Prevents every newly-registered canvas from stealing FR from the
+//     active anchor during initial layout — PencilKitBridge checks
+//     needsFirstResponder before calling becomeFirstResponder.
+//   • Re-anchors to another live canvas when the anchor is deleted
+//     (page deletion is the only scenario where a canvas leaves the
+//     hierarchy in v1). With plain VStack all remaining canvases are
+//     window-attached so the first becomeFirstResponder attempt succeeds.
 //
-// Root cause of the original trap
-// ──────────────────────────────────
-// PKToolPicker only stays visible while a registered canvas is first
-// responder. In Continuous mode LazyVStack recycles canvases as the user
-// scrolls: iOS auto-resigns first responder on a canvas when it is
-// detached from the window, and this fires BEFORE SwiftUI's
-// dismantleUIView. Without a host that immediately re-anchors first
-// responder to another live canvas, the picker disappears every time the
-// "anchor" canvas leaves the screen edge.
-//
-// Architecture
-// ────────────
-// • One PKToolPicker for the app lifetime, owned here.
-// • Every XmateCanvasView registers via register(_:) when it enters a
-//   window, and deregisters via unregister(_:) from dismantleUIView.
-// • register(_:) calls addObserver(_:) + setVisible(true, forFirstResponder:)
-//   so the picker is primed to show for any registered canvas.
-// • PencilKitBridge calls becomeFirstResponder only when needsFirstResponder
-//   is true (no anchor), avoiding FR theft in Continuous mode.
-// • XmateCanvasView overrides becomeFirstResponder / resignFirstResponder
-//   to notify canvasBecameFirstResponder / canvasResignedFirstResponder.
-// • When the anchor resigns, scheduleReanchor() tries all window-attached
-//   registered canvases in turn until one accepts becomeFirstResponder.
+// XmateCanvasView overrides becomeFirstResponder / resignFirstResponder
+// to notify this host — the only reliable way to track which of several
+// simultaneously visible canvases holds Pencil focus.
 //
 // Thread safety: all methods must be called on the main thread.
 
@@ -148,20 +133,14 @@ final class ToolPickerHost {
 
     // MARK: - Re-anchor
 
-    /// Defers to the next runloop tick: if no canvas has taken first responder
-    /// by then, tries each window-attached registered canvas in turn until one
-    /// accepts becomeFirstResponder.
+    /// Defers one runloop tick, then tries each window-attached registered
+    /// canvas until one accepts becomeFirstResponder.
     ///
-    /// Iterating all candidates (rather than stopping after the first attempt)
-    /// handles the case where a canvas is still present in the hash table but
-    /// returns false from becomeFirstResponder — e.g. because it's in the
-    /// process of being detached. Checking the return value ensures we don't
-    /// silently give up on the first failed attempt and leave anchor nil.
-    ///
-    /// The one-tick delay handles the ordering trap: iOS resigns FR (step 1)
-    /// before dismantleUIView (step 2), and a new canvas registers on its own
-    /// async tick (step 3). By the time this block fires, a new anchor may
-    /// already be set — the `anchor == nil` guard handles that.
+    /// Called only when the anchor canvas is deleted. With plain VStack all
+    /// remaining canvases are in the window, so the first attempt in the loop
+    /// normally succeeds immediately. The one-tick deferral and the
+    /// `anchor == nil` guard handle the case where another canvas was already
+    /// promoted to FR before this block runs.
     private func scheduleReanchor() {
         DispatchQueue.main.async { [weak self] in
             guard let self, anchor == nil else { return }

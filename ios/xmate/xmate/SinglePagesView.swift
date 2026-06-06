@@ -8,7 +8,9 @@
 //
 // Geometry: the PencilKitBridge is framed at the paper's logical dimensions
 // (C-027), then .scaleEffect(fitScale) projects it uniformly onto the
-// viewport. A surrounding ZStack absorbs the letterbox area.
+// viewport. A surrounding ZStack fills the letterbox area with
+// Color(.systemGroupedBackground) — matching ContinuousPagesView so both
+// pagination styles share the same background and drop-shadow appearance.
 //
 // Page identity: .id(page.id) forces SwiftUI to create a fresh PKCanvasView
 // (and a fresh Coordinator) for every page — no drawing state bleeds between
@@ -39,6 +41,11 @@ struct SinglePagesView: View {
             let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
 
             ZStack {
+                // Letterbox fill — matches ContinuousPagesView so both
+                // pagination styles share the same neutral background.
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
+
                 if let page = currentPage {
                     PencilKitBridge(
                         page: page,
@@ -51,6 +58,9 @@ struct SinglePagesView: View {
                     .frame(width: paper.width, height: paper.height)
                     // Project the logical page onto the viewport uniformly.
                     .scaleEffect(fitScale)
+                    // Drop shadow — same spec as ContinuousPagesView (F-056
+                    // Visual Spec: 4 pt radius, opacity ~0.15, no offset).
+                    .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 0)
                     // Slide the incoming page in from the correct edge;
                     // .id-driven recreation triggers the transition on
                     // every page change.
@@ -63,8 +73,7 @@ struct SinglePagesView: View {
                     .id(page.id)
                 }
             }
-            // Center the scaled page in the viewport. Letterbox strips on the
-            // unused area inherit the screen background.
+            // Center the scaled page in the viewport.
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
     }
