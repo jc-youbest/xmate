@@ -10,7 +10,7 @@
 //
 // Pagination Style routing (F-056, stage 3):
 //   .singlePage  → SinglePagesView: one full page, finger swipe to flip.
-//   .continuous  → ContinuousPagesView: free-scroll LazyVStack with 20 pt
+//   .continuous  → ContinuousPagesView: free-scroll VStack with 20 pt
 //                  inter-page gaps and geometric current-page detection.
 //
 // Current page index is shared between both layouts via @State. In Single
@@ -91,7 +91,8 @@ struct WritingScreen: View {
                         store: store,
                         currentPageIndex: $currentPageIndex,
                         scrollTarget: scrollTarget,
-                        onScrollTargetConsumed: { scrollTarget = nil }
+                        onScrollTargetConsumed: { scrollTarget = nil },
+                        restorePageIndex: currentPageIndex
                     )
                 }
             }

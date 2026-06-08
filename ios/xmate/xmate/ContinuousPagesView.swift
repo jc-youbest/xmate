@@ -57,6 +57,12 @@ struct ContinuousPagesView: View {
     let scrollTarget: UUID?
     let onScrollTargetConsumed: () -> Void
 
+    /// Page index to restore on first appear. Captured by WritingScreen at the
+    /// moment this view is created — before onScrollGeometryChange fires for
+    /// the initial offset-0 geometry and overwrites currentPageIndex to 0.
+    /// Using a let constant means the restore is immune to that race.
+    let restorePageIndex: Int
+
     // MARK: - Constants
 
     /// Inter-page gap in display points (F-056 Visual Spec).
@@ -97,19 +103,16 @@ struct ContinuousPagesView: View {
                 }
                 .background(Color(.systemGroupedBackground))
 
-                // ── Restore scroll position on appear ─────────────────────
-                // When the user switches from Single Page to Continuous,
-                // ContinuousPagesView is newly created and the ScrollView
-                // starts at offset 0. currentPageIndex already holds the
-                // correct page; scroll there instantly (no animation) so
-                // the user lands on the same page they were reading.
-                // The async defer gives SwiftUI one layout pass to compute
-                // content size before scrollTo fires.
+                // ── Restore position on appear ─────────────────────────────
+                // Scrolls to restorePageIndex (a let constant) on first
+                // appear. currentPageIndex cannot be used here: by the time
+                // the async fires, onScrollGeometryChange has already set it
+                // to 0 for the initial offset-0 geometry.
                 .onAppear {
-                    guard currentPageIndex > 0,
-                          currentPageIndex < pages.count else { return }
+                    guard restorePageIndex > 0,
+                          restorePageIndex < pages.count else { return }
                     DispatchQueue.main.async {
-                        scrollProxy.scrollTo(pages[currentPageIndex].id,
+                        scrollProxy.scrollTo(pages[restorePageIndex].id,
                                              anchor: .center)
                     }
                 }
