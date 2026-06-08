@@ -98,26 +98,13 @@ enum PageGeometry {
     /// (defensive — avoids NaN in the very first SwiftUI layout pass
     /// before the geometry proxy has a size).
     ///
-    /// Used by Single Page mode — constrains both axes so the whole page
-    /// is visible at once.
+    /// Used by both Single Page and Continuous modes — both constrain the
+    /// page to the full viewport so the page appears the same size
+    /// regardless of which pagination style is active. Zoom (F-053) layers
+    /// a user-controlled multiplier on top of this base scale.
     static func fitScale(in viewport: CGSize, for paper: PaperSize) -> CGFloat {
         guard viewport.width > 0, viewport.height > 0 else { return 1.0 }
         return min(viewport.width / paper.width,
                    viewport.height / paper.height)
-    }
-
-    /// Scale that fits a paper to the cross (non-scrolling) axis only.
-    ///
-    /// Used by Continuous mode (F-056). The scroll axis is unbounded so
-    /// only the perpendicular axis constrains the page:
-    ///   • Portrait paper scrolls vertically  → fit to viewport width.
-    ///   • Landscape paper scrolls horizontally → fit to viewport height.
-    ///
-    /// Returns 1.0 when the viewport is empty.
-    static func continuousFitScale(in viewport: CGSize, for paper: PaperSize) -> CGFloat {
-        guard viewport.width > 0, viewport.height > 0 else { return 1.0 }
-        return paper.isPortrait
-            ? viewport.width  / paper.width
-            : viewport.height / paper.height
     }
 }

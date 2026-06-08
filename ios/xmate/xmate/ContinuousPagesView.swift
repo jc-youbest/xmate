@@ -72,7 +72,7 @@ struct ContinuousPagesView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let fitScale = PageGeometry.continuousFitScale(in: proxy.size, for: paper)
+            let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
             let scaledW  = paper.width  * fitScale
             let scaledH  = paper.height * fitScale
             let vertical = paper.isPortrait  // scroll axis
@@ -135,7 +135,7 @@ struct ContinuousPagesView: View {
                 // (not the content size), so it matches our proxy.size.
                 .onScrollGeometryChange(for: Int.self) { geo in
                     if vertical {
-                        let fs      = PageGeometry.continuousFitScale(
+                        let fs      = PageGeometry.fitScale(
                                           in: geo.containerSize, for: paper)
                         let pageH   = paper.height * fs
                         let stride  = pageH + gapPt
@@ -146,7 +146,7 @@ struct ContinuousPagesView: View {
                         ))
                         return max(0, min(pages.count - 1, idx))
                     } else {
-                        let fs      = PageGeometry.continuousFitScale(
+                        let fs      = PageGeometry.fitScale(
                                           in: geo.containerSize, for: paper)
                         let pageW   = paper.width  * fs
                         let stride  = pageW + gapPt

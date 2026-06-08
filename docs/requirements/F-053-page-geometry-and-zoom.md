@@ -49,15 +49,22 @@ current paper:
   expected to rotate the device to match the paper (iOS shows the
   locked UI sideways on the screen, prompting the user physically).
 
-When user pinches the page with two fingers (1× ≤ zoom ≤ 3×):
+When user pinches the page with two fingers:
 - The whole page — handwriting, and any later stationery background —
   scales together as one unit; the logical page itself is unchanged.
-- When `zoomScale == fitScale`, the page exactly fits the viewport;
-  finger swipes up/down still drive page turning (F-051).
-- When `zoomScale > fitScale`, the page is larger than the viewport;
-  finger pan inside the canvas drives translation, bounded by the page
-  edges (no overscroll). Swipe-driven page turning is suspended in this
-  zoomed state — the user pinches back to fit before turning.
+- Minimum zoom is `fitScale` (the page fits the viewport exactly). The
+  user cannot zoom out below fit — there is no "smaller than screen" state.
+- Maximum zoom is unbounded above `fitScale`; no hard cap is enforced.
+- **At fit (zoomScale == fitScale) — "unzoomed state":**
+  - Single Page: finger swipes drive page turning (F-051).
+  - Continuous: finger pan drives free scroll between pages (F-056).
+- **Above fit (zoomScale > fitScale) — "zoomed state":**
+  - Both modes: finger gestures become pan only, bounded by the page
+    edges (no overscroll past the page boundary).
+  - Single Page: swipe-driven page turning is suspended.
+  - Continuous: free scroll between pages is suspended; only pan within
+    the current page is possible.
+  - The user returns to the unzoomed state by pinching back to fitScale.
 
 When user double-taps with a finger inside the page (optional, not v1-required):
 - The page toggles between `fitScale` and an intermediate fixed zoom
@@ -149,8 +156,10 @@ Stage 2 decisions (with the stage 2.5 refactor folded in):
   Resolution: delete and reinstall the app on the dev device before
   testing stage 2; the new persistent store starts clean.
 
-- **Zoom & double-tap (deferred)**: the flow above describes
-  pinch-to-zoom and an optional double-tap. Neither is implemented in
-  stage 2. Stage 3 will introduce a `userZoom` factor on top of
-  `fitScale`, suspend swipe-driven page turning when zoomed in, and
-  add bounded pan within the page.
+- **Zoom (deferred)**: the flow above describes pinch-to-zoom. It is
+  not yet implemented. The next zoom increment will introduce a
+  `userZoom` multiplier on top of `fitScale` (minimum 1.0×, no upper
+  cap), suspend pagination / inter-page scroll when zoomed in, and
+  replace finger navigation with bounded pan within the page edge.
+  Both Single Page and Continuous modes will share the same zoom
+  multiplier and the same zoomed-state pan behaviour.

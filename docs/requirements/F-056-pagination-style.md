@@ -47,9 +47,9 @@ When U-101 WritingScreen is rendered with `paginationStyle == .singlePage`:
 
 When U-101 WritingScreen is rendered with `paginationStyle == .continuous`:
 - Pages stack along `paper.paginationAxis` inside a free-scrolling
-  ScrollView (ContinuousPagesView). Each page is scaled to the
-  cross-axis viewport dimension (`PageGeometry.continuousFitScale`):
-  width for portrait paper, height for landscape paper.
+  ScrollView (ContinuousPagesView). Each page is scaled with
+  `PageGeometry.fitScale` — the same rule as Single Page — so the page
+  appears the same visual size in both styles.
 - The user scrolls with a finger pan or a fast swipe; PKCanvasView's
   `drawingPolicy = .pencilOnly` keeps Pencil reserved for writing.
 - **No snap, no auto-alignment, ever.** Natural deceleration only. A
