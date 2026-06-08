@@ -7,10 +7,18 @@
 // can route cleanly between Single Page and Continuous (F-056).
 //
 // Geometry: the PencilKitBridge is framed at the paper's logical dimensions
-// (C-027), then .scaleEffect(fitScale) projects it uniformly onto the
-// viewport. A surrounding ZStack fills the letterbox area with
-// Color(.systemGroupedBackground) — matching ContinuousPagesView so both
-// pagination styles share the same background and drop-shadow appearance.
+// (C-027), then .scaleEffect(fitScale * userZoom) projects it uniformly onto
+// the viewport at the combined base + user zoom. zoomPanOffset shifts the
+// scaled page within the viewport when userZoom > 1.0. A surrounding ZStack
+// fills the letterbox area with Color(.systemGroupedBackground) — matching
+// ContinuousPagesView so both pagination styles share the same background and
+// drop-shadow appearance.
+//
+// Zoom (F-053): when userZoom > 1.0 (zoomed state), swipe callbacks are
+// passed nil to PencilKitBridge so its UISwipeGestureRecognizers are never
+// added. Finger gestures then reach WritingScreen's DragGesture for panning
+// instead of triggering page turns. Returning to userZoom == 1.0 (fit)
+// restores normal swipe-to-turn navigation.
 //
 // Page identity: .id(page.id) forces SwiftUI to create a fresh PKCanvasView
 // (and a fresh Coordinator) for every page — no drawing state bleeds between
@@ -26,6 +34,11 @@ struct SinglePagesView: View {
 
     @Binding var currentPageIndex: Int
     @Binding var turningForward: Bool
+
+    /// Zoom multiplier supplied by WritingScreen (1.0 = fit, minimum).
+    let userZoom: CGFloat
+    /// Pan offset applied when userZoom > 1.0, bounded by WritingScreen.
+    let zoomPanOffset: CGSize
 
     // MARK: - Derived
 
@@ -50,14 +63,20 @@ struct SinglePagesView: View {
                     PencilKitBridge(
                         page: page,
                         store: store,
-                        onSwipeUp: handleSwipeUp,
-                        onSwipeDown: handleSwipeDown
+                        // Nil when zoomed — disables UISwipeGestureRecognizers
+                        // so finger drags reach WritingScreen's DragGesture
+                        // for panning instead of triggering page turns.
+                        onSwipeUp:   userZoom > 1.0 ? nil : handleSwipeUp,
+                        onSwipeDown: userZoom > 1.0 ? nil : handleSwipeDown
                     )
                     // Frame at logical paper dimensions — PKCanvasView stores
                     // strokes here so they reload identically on any iPad.
                     .frame(width: paper.width, height: paper.height)
-                    // Project the logical page onto the viewport uniformly.
-                    .scaleEffect(fitScale)
+                    // Project the logical page onto the viewport at the
+                    // combined base + user zoom.
+                    .scaleEffect(fitScale * userZoom)
+                    // Shift the scaled page within the viewport while zoomed.
+                    .offset(zoomPanOffset)
                     // Drop shadow — same spec as ContinuousPagesView (F-056
                     // Visual Spec: 4 pt radius, opacity ~0.15, no offset).
                     .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 0)

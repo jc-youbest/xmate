@@ -107,8 +107,7 @@ layout container around them.
 ## Implementation Status
 
 The geometry half of this feature ships in roadmap v1 stage 2. **Zoom
-is not yet implemented** — it is the planned stage 3 work, on top of
-the geometry layer below.
+ships in stage 3**, layered on top of the geometry layer below.
 
 Stage 2 decisions (with the stage 2.5 refactor folded in):
 
@@ -156,10 +155,24 @@ Stage 2 decisions (with the stage 2.5 refactor folded in):
   Resolution: delete and reinstall the app on the dev device before
   testing stage 2; the new persistent store starts clean.
 
-- **Zoom (deferred)**: the flow above describes pinch-to-zoom. It is
-  not yet implemented. The next zoom increment will introduce a
-  `userZoom` multiplier on top of `fitScale` (minimum 1.0×, no upper
-  cap), suspend pagination / inter-page scroll when zoomed in, and
-  replace finger navigation with bounded pan within the page edge.
-  Both Single Page and Continuous modes will share the same zoom
-  multiplier and the same zoomed-state pan behaviour.
+- **Zoom (stage 3)**: implemented in `WritingScreen.swift`.
+  - `userZoom: CGFloat` state in WritingScreen — minimum 1.0×
+    (fit), no upper cap. Reset to 1.0 on every page change.
+  - `MagnificationGesture` attached as `.simultaneousGesture` on
+    the canvas ZStack; clamps to ≥ 1.0 so the user cannot zoom
+    below fit.
+  - `DragGesture` attached as `.simultaneousGesture`; no-op guard
+    when `userZoom == 1.0` so ScrollView / swipe recognisers
+    receive the gesture unimpeded at fit.
+  - Pan offset bounded by `halfOverflowX / halfOverflowY` so the
+    page edge never passes the viewport edge.
+  - **Single Page zoomed state**: `onSwipeUp` / `onSwipeDown`
+    callbacks passed as `nil` to PencilKitBridge → no
+    UISwipeGestureRecognizers are added → pagination suspended.
+  - **Continuous zoomed state**: `ContinuousZoomOverlay` (private
+    struct in WritingScreen) covers the viewport, blocking the
+    ScrollView from receiving finger pan events. Pencil still
+    reaches the underlying PKCanvasView via Apple Pencil's
+    separate UIEvent path.
+  - Both modes share the same `userZoom` / `zoomPanOffset` state
+    and the same pinch + pan gesture handlers.
