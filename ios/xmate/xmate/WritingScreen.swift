@@ -24,18 +24,22 @@
 //
 // Zoom (F-053):
 //   userZoom ranges from 1.0 (fit) upward — no maximum cap.
-//   MagnificationGesture and DragGesture are attached as .simultaneousGesture
-//   on the canvas ZStack so they fire alongside (not instead of) child
-//   gesture recognisers. PKCanvasView's drawingPolicy = .pencilOnly means
-//   finger touches are never consumed by PencilKit, so the gestures reliably
-//   receive all finger events.
+//   MagnificationGesture is attached as .simultaneousGesture to detect pinch.
+//
+//   Panning: a UIPanGestureRecognizer with allowedTouchTypes = [.direct] is
+//   attached directly to PKCanvasView inside PencilKitBridge. This is the
+//   only reliable way to accept finger panning while writing with Pencil:
+//   any covering UIView approach fails because event.allTouches is not yet
+//   populated during hitTest, so the pencil-type check is unreliable and
+//   pencil events get blocked. With the recogniser on the canvas itself,
+//   PencilKit handles .pencil events and our pan handles .direct events;
+//   they coexist on the same view without any interception.
 //
 //   When userZoom > 1.0 (zoomed state):
-//     • Single Page: swipe callbacks are passed nil → no pagination.
-//     • Continuous: ContinuousZoomOverlay is laid over the ScrollView, filling
-//       the viewport and blocking it from receiving the finger pan. Pencil
-//       input still reaches the underlying PKCanvasView via Apple Pencil's
-//       separate event path (independent of UITouch).
+//     • Single Page: swipe callbacks → nil (no pagination); pan callbacks
+//       → non-nil (finger pan enabled on canvas).
+//     • Continuous: ContinuousZoomOverlay covers the ScrollView; its own
+//       PencilKitBridge has the pan recogniser for writing + panning.
 //
 //   Zoom and pan are reset to their neutral values whenever the current page
 //   changes (onChange(of: currentPageIndex)) so every page opens at fit.
@@ -80,7 +84,7 @@ struct WritingScreen: View {
     /// Pan offset applied when userZoom > 1.0. Bounded by the half-overflow
     /// on each axis so the page edge never passes the viewport edge.
     @State private var zoomPanOffset: CGSize = .zero
-    /// Pan offset captured at the start of each DragGesture session.
+    /// Pan offset captured at the start of each finger pan gesture session.
     @State private var gestureBasePan: CGSize = .zero
 
     // MARK: - Body
@@ -100,127 +104,10 @@ struct WritingScreen: View {
                 )
             }
 
-            // Canvas area — routed by Pagination Style.
-            // Wrapped in GeometryReader so we can compute pan bounds from the
-            // live viewport size when userZoom > 1.0.
-            GeometryReader { proxy in
-                let fitScale = PageGeometry.fitScale(in: proxy.size,
-                                                     for: PaperPreset.letter)
-                // Half-overflow: how many points the scaled page extends past
-                // each edge of the viewport. Clamped to ≥ 0 so the formula
-                // never produces an inverted bound at fit.
-                let halfOverflowX = max(0,
-                    (PaperPreset.letter.width  * fitScale * userZoom
-                     - proxy.size.width)  / 2)
-                let halfOverflowY = max(0,
-                    (PaperPreset.letter.height * fitScale * userZoom
-                     - proxy.size.height) / 2)
-
-                ZStack {
-                    switch settings.paginationStyle {
-
-                    case .singlePage:
-                        SinglePagesView(
-                            pages: pages,
-                            paper: PaperPreset.letter,
-                            store: store,
-                            currentPageIndex: $currentPageIndex,
-                            turningForward: $turningForward,
-                            userZoom: userZoom,
-                            zoomPanOffset: zoomPanOffset
-                        )
-
-                    case .continuous:
-                        ContinuousPagesView(
-                            pages: pages,
-                            paper: PaperPreset.letter,
-                            store: store,
-                            currentPageIndex: $currentPageIndex,
-                            scrollTarget: scrollTarget,
-                            onScrollTargetConsumed: { scrollTarget = nil },
-                            restorePageIndex: currentPageIndex
-                        )
-                    }
-
-                    // Continuous zoom overlay — shown when Continuous mode is
-                    // active and the user has zoomed in. The overlay covers the
-                    // full viewport, blocking the ScrollView from receiving
-                    // finger pan events while zoomed. Pencil input still reaches
-                    // the underlying PKCanvasView via Apple Pencil's separate
-                    // event path.
-                    if settings.paginationStyle == .continuous,
-                       userZoom > 1.0,
-                       !pages.isEmpty,
-                       currentPageIndex < pages.count {
-                        ContinuousZoomOverlay(
-                            page: pages[currentPageIndex],
-                            paper: PaperPreset.letter,
-                            store: store,
-                            fitScale: fitScale,
-                            userZoom: userZoom,
-                            zoomPanOffset: zoomPanOffset
-                        )
-                    }
-                }
-                // ── Pinch-to-zoom ─────────────────────────────────────────
-                // .simultaneousGesture fires alongside child gesture
-                // recognisers — PencilKit's drawingPolicy = .pencilOnly
-                // means finger touches are never consumed by the canvas, so
-                // this reliably receives all two-finger pinches.
-                .simultaneousGesture(
-                    MagnificationGesture()
-                        .onChanged { value in
-                            let candidate = gestureBaseZoom * value
-                            userZoom = max(1.0, candidate)
-                            // Snap pan to zero the moment we return to fit.
-                            if userZoom <= 1.0 {
-                                zoomPanOffset = .zero
-                                gestureBasePan = .zero
-                            }
-                        }
-                        .onEnded { value in
-                            let final = max(1.0, gestureBaseZoom * value)
-                            userZoom = final
-                            gestureBaseZoom = final
-                            if final <= 1.0 {
-                                gestureBaseZoom = 1.0
-                                zoomPanOffset = .zero
-                                gestureBasePan = .zero
-                            }
-                        }
-                )
-                // ── Pan while zoomed ──────────────────────────────────────
-                // No-op guard when at fit so the ScrollView / swipe
-                // recognisers receive the gesture unimpeded.
-                .simultaneousGesture(
-                    DragGesture()
-                        .onChanged { value in
-                            guard userZoom > 1.0 else { return }
-                            zoomPanOffset = CGSize(
-                                width:  (gestureBasePan.width
-                                         + value.translation.width)
-                                        .clamped(to: -halfOverflowX...halfOverflowX),
-                                height: (gestureBasePan.height
-                                         + value.translation.height)
-                                        .clamped(to: -halfOverflowY...halfOverflowY)
-                            )
-                        }
-                        .onEnded { _ in
-                            guard userZoom > 1.0 else { return }
-                            gestureBasePan = zoomPanOffset
-                        }
-                )
-            }
-            .ignoresSafeArea(edges: .bottom)
-
-            // Reset zoom and pan when the user navigates to a different page
-            // so every page opens at fit (userZoom == 1.0).
-            .onChange(of: currentPageIndex) { _, _ in
-                userZoom = 1.0
-                gestureBaseZoom = 1.0
-                zoomPanOffset = .zero
-                gestureBasePan = .zero
-            }
+            // Canvas area extracted into a helper to keep body small enough
+            // for the Swift type checker (the GeometryReader + gesture tree
+            // would otherwise exceed the compiler's expression-complexity limit).
+            canvasArea
         }
         .onAppear(perform: loadDocument)
 
@@ -238,6 +125,131 @@ struct WritingScreen: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("All pages in this document will be permanently deleted.")
+        }
+    }
+
+    // MARK: - Canvas area helpers
+    //
+    // Extracted from body to stay within Swift's expression-complexity limit.
+
+    /// GeometryReader wrapper that computes fitScale and pan bounds, then
+    /// hosts the ZStack. Gestures and modifiers are attached here so they
+    /// share the same proxy size without re-entering a closure in body.
+    @ViewBuilder
+    private var canvasArea: some View {
+        GeometryReader { proxy in
+            let fitScale = PageGeometry.fitScale(in: proxy.size,
+                                                 for: PaperPreset.letter)
+            // Half-overflow: how far the scaled page extends past each viewport
+            // edge. Clamped to ≥ 0 so the bound is never inverted at fit.
+            let halfOverflowX = max(0,
+                (PaperPreset.letter.width  * fitScale * userZoom
+                 - proxy.size.width)  / 2)
+            let halfOverflowY = max(0,
+                (PaperPreset.letter.height * fitScale * userZoom
+                 - proxy.size.height) / 2)
+
+            canvasZStack(fitScale: fitScale,
+                         halfOverflowX: halfOverflowX,
+                         halfOverflowY: halfOverflowY)
+            // MagnificationGesture is two-finger; never conflicts with Pencil.
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        let candidate = gestureBaseZoom * value
+                        userZoom = max(1.0, candidate)
+                        if userZoom <= 1.0 {
+                            zoomPanOffset = .zero
+                            gestureBasePan = .zero
+                        }
+                    }
+                    .onEnded { value in
+                        let final = max(1.0, gestureBaseZoom * value)
+                        userZoom = final
+                        gestureBaseZoom = final
+                        if final <= 1.0 {
+                            gestureBaseZoom = 1.0
+                            zoomPanOffset = .zero
+                            gestureBasePan = .zero
+                        }
+                    }
+            )
+        }
+        .ignoresSafeArea(edges: .bottom)
+        // Reset zoom and pan on every page change so each page opens at fit.
+        .onChange(of: currentPageIndex) { _, _ in
+            userZoom = 1.0
+            gestureBaseZoom = 1.0
+            zoomPanOffset = .zero
+            gestureBasePan = .zero
+        }
+    }
+
+    /// ZStack contents: the active pagination view and (when in Continuous mode
+    /// and zoomed) the zoom overlay. Pan callbacks are forwarded to the
+    /// PencilKitBridge inside each view; no covering overlay is needed.
+    @ViewBuilder
+    private func canvasZStack(fitScale: CGFloat,
+                               halfOverflowX: CGFloat,
+                               halfOverflowY: CGFloat) -> some View {
+        // Pan callbacks: non-nil only when zoomed. Closures close over the
+        // current halfOverflow bounds from the enclosing GeometryReader.
+        let panChanged: ((CGSize) -> Void)? = userZoom > 1.0 ? { translation in
+            let newX = (gestureBasePan.width + translation.width)
+                .clamped(to: -halfOverflowX...halfOverflowX)
+            let newY = (gestureBasePan.height + translation.height)
+                .clamped(to: -halfOverflowY...halfOverflowY)
+            zoomPanOffset = CGSize(width: newX, height: newY)
+        } : nil
+        let panEnded: (() -> Void)? = userZoom > 1.0 ? {
+            gestureBasePan = zoomPanOffset
+        } : nil
+
+        ZStack {
+            switch settings.paginationStyle {
+            case .singlePage:
+                SinglePagesView(
+                    pages: pages,
+                    paper: PaperPreset.letter,
+                    store: store,
+                    currentPageIndex: $currentPageIndex,
+                    turningForward: $turningForward,
+                    userZoom: userZoom,
+                    zoomPanOffset: zoomPanOffset,
+                    fingerPanChanged: panChanged,
+                    fingerPanEnded: panEnded
+                )
+            case .continuous:
+                ContinuousPagesView(
+                    pages: pages,
+                    paper: PaperPreset.letter,
+                    store: store,
+                    currentPageIndex: $currentPageIndex,
+                    scrollTarget: scrollTarget,
+                    onScrollTargetConsumed: { scrollTarget = nil },
+                    restorePageIndex: currentPageIndex
+                )
+            }
+
+            // Continuous zoom overlay: shown when zoomed in Continuous mode.
+            // It covers the ScrollView (preventing accidental scroll), hosts
+            // the PKCanvasView for writing on the current page, and its
+            // PencilKitBridge holds the finger pan recogniser.
+            if settings.paginationStyle == .continuous,
+               userZoom > 1.0,
+               !pages.isEmpty,
+               currentPageIndex < pages.count {
+                ContinuousZoomOverlay(
+                    page: pages[currentPageIndex],
+                    paper: PaperPreset.letter,
+                    store: store,
+                    fitScale: fitScale,
+                    userZoom: userZoom,
+                    zoomPanOffset: zoomPanOffset,
+                    fingerPanChanged: panChanged,
+                    fingerPanEnded: panEnded
+                )
+            }
         }
     }
 
@@ -322,10 +334,9 @@ struct WritingScreen: View {
 // MARK: - ContinuousZoomOverlay
 
 /// Full-viewport overlay shown when Continuous mode is active and
-/// `userZoom > 1.0`. It renders only the current page (centred and scaled)
-/// and intercepts all finger touches so the underlying ScrollView cannot
-/// scroll while zoomed. Apple Pencil input travels a separate UIEvent path
-/// and still reaches the PKCanvasView beneath the overlay unchanged.
+/// `userZoom > 1.0`. It covers the ScrollView so accidental scrolling is
+/// impossible while zoomed, renders only the current page, and hosts the
+/// PencilKitBridge whose finger pan recogniser drives panning.
 private struct ContinuousZoomOverlay: View {
     let page: Page
     let paper: PaperSize
@@ -333,6 +344,9 @@ private struct ContinuousZoomOverlay: View {
     let fitScale: CGFloat
     let userZoom: CGFloat
     let zoomPanOffset: CGSize
+    /// Forwarded to PencilKitBridge to enable the finger pan recogniser.
+    let fingerPanChanged: ((CGSize) -> Void)?
+    let fingerPanEnded: (() -> Void)?
 
     var body: some View {
         ZStack {
@@ -344,15 +358,18 @@ private struct ContinuousZoomOverlay: View {
                 page: page,
                 store: store,
                 onSwipeUp: nil,
-                onSwipeDown: nil
+                onSwipeDown: nil,
+                fingerPanChanged: fingerPanChanged,
+                fingerPanEnded: fingerPanEnded
             )
             .frame(width: paper.width, height: paper.height)
             .scaleEffect(fitScale * userZoom)
             .offset(zoomPanOffset)
             .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 0)
         }
-        // Transparent hit-test surface covers the whole overlay, preventing
-        // finger touches from falling through to the ScrollView below.
+        // contentShape makes the whole overlay (including letterbox area)
+        // hittable, so finger touches in the margins don't fall through to
+        // the ScrollView beneath this overlay.
         .contentShape(Rectangle())
     }
 }

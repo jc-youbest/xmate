@@ -39,6 +39,10 @@ struct SinglePagesView: View {
     let userZoom: CGFloat
     /// Pan offset applied when userZoom > 1.0, bounded by WritingScreen.
     let zoomPanOffset: CGSize
+    /// Zoom-pan callbacks (F-053). Non-nil when userZoom > 1.0; forwarded
+    /// directly to PencilKitBridge which attaches the recogniser to the canvas.
+    let fingerPanChanged: ((CGSize) -> Void)?
+    let fingerPanEnded: (() -> Void)?
 
     // MARK: - Derived
 
@@ -63,11 +67,12 @@ struct SinglePagesView: View {
                     PencilKitBridge(
                         page: page,
                         store: store,
-                        // Nil when zoomed — disables UISwipeGestureRecognizers
-                        // so finger drags reach WritingScreen's DragGesture
-                        // for panning instead of triggering page turns.
-                        onSwipeUp:   userZoom > 1.0 ? nil : handleSwipeUp,
-                        onSwipeDown: userZoom > 1.0 ? nil : handleSwipeDown
+                        // Nil when zoomed — disables swipe recognisers so finger
+                        // gestures go to the canvas's pan recogniser instead.
+                        onSwipeUp:        userZoom > 1.0 ? nil : handleSwipeUp,
+                        onSwipeDown:      userZoom > 1.0 ? nil : handleSwipeDown,
+                        fingerPanChanged: fingerPanChanged,
+                        fingerPanEnded:   fingerPanEnded
                     )
                     // Frame at logical paper dimensions — PKCanvasView stores
                     // strokes here so they reload identically on any iPad.

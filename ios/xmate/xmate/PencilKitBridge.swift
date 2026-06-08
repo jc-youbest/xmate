@@ -8,6 +8,15 @@
 // In Continuous mode onSwipeUp/onSwipeDown are nil and no gesture recognisers
 // are added — they would fight the enclosing ScrollView's pan gesture.
 //
+// Zoom pan (F-053): when fingerPanChanged/fingerPanEnded are provided,
+// a UIPanGestureRecognizer restricted to allowedTouchTypes = [.direct]
+// (finger only) is permanently attached to the canvas. The recogniser is
+// disabled when the callbacks are nil (userZoom == 1.0) and enabled when
+// they are set (userZoom > 1.0). Because the recogniser lives on the same
+// UIView as PencilKit, there is no view blocking pencil events — PencilKit
+// handles .pencil touches internally, the pan handles .direct (finger)
+// touches, and they never interfere.
+//
 // Tool picker: owned by C-029 ToolPickerHost (app-wide singleton). This bridge
 // registers its canvas with ToolPickerHost in updateUIView (once the canvas
 // has a window) and deregisters in dismantleUIView. The picker therefore stays
@@ -37,6 +46,16 @@ struct PencilKitBridge: UIViewRepresentable {
     var onSwipeUp: (() -> Void)?
     var onSwipeDown: (() -> Void)?
 
+    /// Zoom-pan callbacks (F-053). When non-nil, a finger-only
+    /// UIPanGestureRecognizer is enabled on the canvas.
+    ///   onChanged — called with the total translation (in window / screen
+    ///               coordinates) since the gesture began.
+    ///   onEnded   — called once on gesture end/cancel.
+    /// Pass nil when userZoom == 1.0 to keep the recogniser disabled so it
+    /// cannot compete with the swipe recognisers for page navigation.
+    var fingerPanChanged: ((CGSize) -> Void)?
+    var fingerPanEnded: (() -> Void)?
+
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
@@ -46,6 +65,11 @@ struct PencilKitBridge: UIViewRepresentable {
 
         var onSwipeUp: (() -> Void)?
         var onSwipeDown: (() -> Void)?
+
+        var fingerPanChanged: ((CGSize) -> Void)?
+        var fingerPanEnded: (() -> Void)?
+        /// Weak ref so we can enable/disable the recogniser in updateUIView.
+        weak var fingerPanRecognizer: UIPanGestureRecognizer?
 
         var saveWorkItem: DispatchWorkItem?
         private var backgroundObserver: NSObjectProtocol?
@@ -83,6 +107,20 @@ struct PencilKitBridge: UIViewRepresentable {
 
         @objc func handleSwipeUp()   { onSwipeUp?()   }
         @objc func handleSwipeDown() { onSwipeDown?() }
+
+        @objc func handleFingerPan(_ r: UIPanGestureRecognizer) {
+            // translation(in: nil) returns window coordinates, which equal
+            // SwiftUI layout coordinates for a portrait-locked app.
+            let t = r.translation(in: nil)
+            switch r.state {
+            case .changed:
+                fingerPanChanged?(CGSize(width: t.x, height: t.y))
+            case .ended, .cancelled, .failed:
+                fingerPanEnded?()
+            default:
+                break
+            }
+        }
 
         // MARK: Save helpers
 
@@ -167,6 +205,25 @@ struct PencilKitBridge: UIViewRepresentable {
             }
         }
 
+        // Finger-only pan recogniser for zoom panning (F-053).
+        // Always attached so it can be toggled without makeUIView re-running.
+        // Starts disabled; updateUIView enables it when fingerPanChanged is set.
+        // maximumNumberOfTouches = 1 ensures it doesn't fire during a two-finger
+        // pinch (MagnificationGesture in WritingScreen).
+        // cancelsTouchesInView = false keeps touch delivery to PencilKit intact.
+        let fingerOnly: [NSNumber] = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        let pan = UIPanGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleFingerPan(_:))
+        )
+        pan.allowedTouchTypes = fingerOnly
+        pan.minimumNumberOfTouches = 1
+        pan.maximumNumberOfTouches = 1
+        pan.cancelsTouchesInView = false
+        pan.isEnabled = false
+        canvas.addGestureRecognizer(pan)
+        context.coordinator.fingerPanRecognizer = pan
+
         return canvas
     }
 
@@ -177,9 +234,16 @@ struct PencilKitBridge: UIViewRepresentable {
         uiView.isScrollEnabled = false
 
         // Keep coordinator callbacks current.
-        context.coordinator.onSwipeUp   = onSwipeUp
-        context.coordinator.onSwipeDown = onSwipeDown
-        context.coordinator.store       = store
+        context.coordinator.onSwipeUp        = onSwipeUp
+        context.coordinator.onSwipeDown      = onSwipeDown
+        context.coordinator.fingerPanChanged = fingerPanChanged
+        context.coordinator.fingerPanEnded   = fingerPanEnded
+        context.coordinator.store            = store
+
+        // Enable the finger pan recogniser only when pan callbacks are provided
+        // (i.e. when userZoom > 1.0). Disabling it at fit ensures it cannot
+        // compete with the swipe recognisers for page-navigation gestures.
+        context.coordinator.fingerPanRecognizer?.isEnabled = (fingerPanChanged != nil)
 
         // Register with ToolPickerHost once, deferred one runloop tick so
         // the hosting view is fully laid out and the canvas has a window.
