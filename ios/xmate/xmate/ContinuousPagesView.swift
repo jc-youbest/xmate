@@ -188,6 +188,23 @@ struct ContinuousPagesView: View {
                     currentPageIndex = newIdx
                 }
 
+                // ── Re-declare active page on scroll-stop ──────────────────
+                // onScrollGeometryChange only writes currentPageIndex; it does
+                // NOT change which canvas is the active editor. Without this,
+                // the active canvas stays on the page we entered at, so when
+                // that page scrolls off (or a pinch / OS event resigns it) the
+                // ToolPicker has no first responder and disappears with no
+                // recovery. onChange fires once per page-boundary crossing
+                // (distinct values only), so it does not thrash mid-scroll.
+                // setDesiredActive promotes the now-current page's canvas:
+                // flush previous → reload → first responder → bind ToolPicker.
+                .onChange(of: currentPageIndex) { _, idx in
+                    guard idx >= 0, idx < pages.count,
+                          let id = pages[idx].id else { return }
+                    DrawingSessionManager.shared
+                        .setDesiredActive(pageID: id, role: .continuous)
+                }
+
                 // ── Programmatic scroll (Add Page) ─────────────────────────
                 // One-way: WritingScreen sets scrollTarget; we scroll and
                 // immediately clear the signal. This is the only safe

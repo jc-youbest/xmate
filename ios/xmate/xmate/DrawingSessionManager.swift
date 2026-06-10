@@ -236,12 +236,34 @@ final class DrawingSessionManager {
         ToolPickerHost.shared.setActiveCanvas(canvas)
     }
 
-    /// The canvas lost first responder (window detach, or another canvas took
-    /// focus). We deliberately do NOT auto-promote a replacement — that is the
-    /// random-reanchor behaviour the rework removes. The next active canvas is
-    /// chosen explicitly.
+    /// The canvas lost first responder (window detach, scroll, pinch, or the
+    /// OS resigning an off-screen view). We never auto-promote a RANDOM canvas
+    /// — that was the toolbar-jump bug the rework removed — but we DO restore
+    /// the picker deterministically: re-promote the canvas a view has
+    /// explicitly declared via `setDesiredActive` (the current visible page),
+    /// which is unique and visible, never a hidden canvas.
+    ///
+    /// Without this, once the active canvas resigned for any reason the
+    /// PKToolPicker had no first responder and stayed gone until the user
+    /// tapped with the Pencil. The recovery is async (runs after the resign
+    /// settles, so it can't recurse into a resign↔become loop) and bails if
+    /// another canvas has meanwhile taken the anchor.
     func canvasResignedFirstResponder(_ canvas: XmateCanvasView) {
-        if anchor === canvas { anchor = nil }
+        guard anchor === canvas else { return }
+        anchor = nil
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            // Someone already became first responder — nothing to recover.
+            guard self.anchor == nil else { return }
+            guard let wantPage = self.desiredActivePageID,
+                  let wantRole = self.desiredActiveRole else { return }
+            for reg in self.regs.values
+            where reg.pageID == wantPage && reg.role == wantRole && reg.isVisible {
+                guard let c = reg.canvas else { continue }
+                self.makeActive(c)
+                break
+            }
+        }
     }
 
     // MARK: - Save gating
