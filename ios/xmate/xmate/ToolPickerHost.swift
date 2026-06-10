@@ -1,29 +1,24 @@
 // C-029 ToolPickerHost
 //
-// App-wide PKToolPicker singleton.
+// App-wide PKToolPicker singleton. As of the object-lifecycle rework it is a
+// THIN owner of the single picker — it no longer tracks first responder or
+// guesses who to re-anchor to. The authoritative "which canvas is editing
+// which page" decision lives entirely in C-030 DrawingSessionManager, which
+// drives this host through `setActiveCanvas(_:)`.
 //
-// ContinuousPagesView uses a plain VStack (not LazyVStack) so all page
-// canvases are permanently in the window hierarchy. This is a deliberate
-// architectural choice: PKToolPicker associates with specific UIResponder
-// instances via addObserver(_:) and setVisible(true, forFirstResponder:).
-// LazyVStack recycles canvases out of the hierarchy — iOS resigns first
-// responder on window-detach, and no reliable recovery exists on real
-// hardware. Plain VStack eliminates the problem at the root.
+// Why the split:
+//   • Previously this host kept a set of registered canvases plus a single
+//     `anchor`, and on anchor loss looped the set picking the first canvas
+//     that accepted becomeFirstResponder. With a hidden Continuous canvas and
+//     a Zoom-overlay canvas both registered, that loop could (and did) bind
+//     the picker to an invisible canvas — the toolbar "jumped".
+//   • Now the picker is only ever made visible for the canvas the session
+//     manager has explicitly designated active and visible. Invisible /
+//     inactive canvases are never chosen.
 //
-// With multiple live canvases, one shared PKToolPicker is registered with
-// all of them. This host:
-//   • Tracks which canvas currently holds first responder (anchor).
-//   • Prevents every newly-registered canvas from stealing FR from the
-//     active anchor during initial layout — PencilKitBridge checks
-//     needsFirstResponder before calling becomeFirstResponder.
-//   • Re-anchors to another live canvas when the anchor is deleted
-//     (page deletion is the only scenario where a canvas leaves the
-//     hierarchy in v1). With plain VStack all remaining canvases are
-//     window-attached so the first becomeFirstResponder attempt succeeds.
-//
-// XmateCanvasView overrides becomeFirstResponder / resignFirstResponder
-// to notify this host — the only reliable way to track which of several
-// simultaneously visible canvases holds Pencil focus.
+// ContinuousPagesView still uses a plain VStack (not LazyVStack) so all page
+// canvases stay window-attached; that remains a deliberate choice so the
+// picker's PKToolPicker observers are never torn off the window underneath us.
 //
 // Thread safety: all methods must be called on the main thread.
 
@@ -34,15 +29,26 @@ import PencilKit
 
 /// PKCanvasView subclass used by all PencilKitBridge instances.
 ///
-/// Overrides becomeFirstResponder / resignFirstResponder to notify
-/// ToolPickerHost. This is the only reliable way to track which canvas
-/// among several simultaneously visible ones holds the Pencil focus.
+/// Carries its identity (`pageID`, `role`) so C-030 DrawingSessionManager can
+/// reason about it without a side table keyed on the UIView, and overrides the
+/// first-responder transitions to notify the session manager — the only
+/// reliable way to know which of several simultaneously visible canvases the
+/// Pencil is currently focused on.
 final class XmateCanvasView: PKCanvasView {
+
+    /// The Page this canvas edits. Set once in PencilKitBridge.makeUIView.
+    /// Implicitly-unwrapped because every canvas is created for a concrete
+    /// page; reading it before assignment is a programmer error.
+    var pageID: UUID!
+
+    /// Whether this canvas lives in the Single, Continuous, or (legacy) Overlay
+    /// slot. Used by the session manager for diagnostics and policy.
+    var role: CanvasRole = .single
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         if became {
-            ToolPickerHost.shared.canvasBecameFirstResponder(self)
+            DrawingSessionManager.shared.canvasBecameFirstResponder(self)
         }
         return became
     }
@@ -50,7 +56,7 @@ final class XmateCanvasView: PKCanvasView {
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
         if resigned {
-            ToolPickerHost.shared.canvasResignedFirstResponder(self)
+            DrawingSessionManager.shared.canvasResignedFirstResponder(self)
         }
         return resigned
     }
@@ -60,95 +66,32 @@ final class XmateCanvasView: PKCanvasView {
 
 /// C-029 ToolPickerHost — owns the single app-wide PKToolPicker.
 ///
-/// Singleton. All methods are main-thread only.
+/// Singleton. All methods are main-thread only. Has no opinion about which
+/// canvas is active; it merely reflects the session manager's decisions.
 final class ToolPickerHost {
     static let shared = ToolPickerHost()
     private init() {}
-
-    // MARK: - Public surface
 
     /// The one PKToolPicker for the entire app. PencilKitBridge never
     /// creates its own instance.
     let picker = PKToolPicker()
 
-    /// True when no canvas currently holds first responder in our tracking.
-    /// PencilKitBridge reads this before deciding whether to call
-    /// becomeFirstResponder after registration — avoids stealing FR in
-    /// Continuous mode when a live anchor already exists.
-    var needsFirstResponder: Bool { anchor == nil }
-
-    // MARK: - Private state
-
-    /// Weak references to all currently registered canvases. NSHashTable
-    /// with .weakObjects() clears entries automatically when a canvas
-    /// is deallocated.
-    private let canvases = NSHashTable<XmateCanvasView>.weakObjects()
-
-    /// The canvas that currently holds first responder, or nil.
-    private weak var anchor: XmateCanvasView?
-
-    // MARK: - Registration
-
-    /// Register a canvas with the picker. Call once from PencilKitBridge's
-    /// updateUIView deferred block, after confirming canvas.window != nil.
-    ///
-    /// After calling this, call canvas.becomeFirstResponder() only if
-    /// needsFirstResponder is true — otherwise the canvas is primed to show
-    /// the picker when it naturally becomes FR (e.g. Pencil tap) without
-    /// stealing FR from the currently active canvas.
+    /// Start observing a canvas so the picker can show its tools when this
+    /// canvas (later) becomes the active first responder. Does NOT make the
+    /// picker visible — that only happens via `setActiveCanvas`.
     func register(_ canvas: XmateCanvasView) {
-        canvases.add(canvas)
         picker.addObserver(canvas)
-        picker.setVisible(true, forFirstResponder: canvas)
     }
 
-    /// Deregister a canvas. Call from PencilKitBridge.dismantleUIView.
-    ///
-    /// Do NOT manually resign first responder before this call — iOS
-    /// already resigned it on window detach, which fires before
-    /// dismantleUIView. Calling resignFirstResponder() here would be a
-    /// no-op at best and a race at worst.
+    /// Stop observing a canvas. Called from DrawingSessionManager.unregister.
     func unregister(_ canvas: XmateCanvasView) {
-        canvases.remove(canvas)
         picker.removeObserver(canvas)
-        if anchor === canvas {
-            anchor = nil
-            scheduleReanchor()
-        }
     }
 
-    // MARK: - FR notifications (called by XmateCanvasView)
-
-    /// Called by XmateCanvasView.becomeFirstResponder after super returns true.
-    func canvasBecameFirstResponder(_ canvas: XmateCanvasView) {
-        anchor = canvas
-    }
-
-    /// Called by XmateCanvasView.resignFirstResponder after super returns true.
-    func canvasResignedFirstResponder(_ canvas: XmateCanvasView) {
-        guard anchor === canvas else { return }
-        anchor = nil
-        scheduleReanchor()
-    }
-
-    // MARK: - Re-anchor
-
-    /// Defers one runloop tick, then tries each window-attached registered
-    /// canvas until one accepts becomeFirstResponder.
-    ///
-    /// Called only when the anchor canvas is deleted. With plain VStack all
-    /// remaining canvases are in the window, so the first attempt in the loop
-    /// normally succeeds immediately. The one-tick deferral and the
-    /// `anchor == nil` guard handle the case where another canvas was already
-    /// promoted to FR before this block runs.
-    private func scheduleReanchor() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self, anchor == nil else { return }
-            for canvas in canvases.allObjects where canvas.window != nil {
-                if canvas.becomeFirstResponder() {
-                    return  // success — canvasBecameFirstResponder already set anchor
-                }
-            }
-        }
+    /// Bind the picker to the one canvas the session manager has designated
+    /// active. This is the ONLY place the picker is made visible, so it can
+    /// never end up anchored to a hidden or inactive canvas.
+    func setActiveCanvas(_ canvas: XmateCanvasView) {
+        picker.setVisible(true, forFirstResponder: canvas)
     }
 }

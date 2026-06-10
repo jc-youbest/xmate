@@ -67,6 +67,7 @@ struct SinglePagesView: View {
                     PencilKitBridge(
                         page: page,
                         store: store,
+                        role: .single,
                         // Nil when zoomed — disables swipe recognisers so finger
                         // gestures go to the canvas's pan recogniser instead.
                         onSwipeUp:        userZoom > 1.0 ? nil : handleSwipeUp,
@@ -100,6 +101,18 @@ struct SinglePagesView: View {
             // Center the scaled page in the viewport.
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
+        // Explicit active-canvas handoff (F-051 / F-053 / F-056): tell the
+        // session manager which page should be edited on appear and after
+        // every page turn. The single canvas for that page is then promoted —
+        // it flushes the outgoing page, reloads the latest drawing, takes first
+        // responder and binds the ToolPicker, in that order.
+        .onAppear { syncDesiredActive() }
+        .onChange(of: currentPageIndex) { _, _ in syncDesiredActive() }
+    }
+
+    private func syncDesiredActive() {
+        guard let id = currentPage?.id else { return }
+        DrawingSessionManager.shared.setDesiredActive(pageID: id, role: .single)
     }
 
     // MARK: - Navigation

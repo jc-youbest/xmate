@@ -81,6 +81,7 @@ final class NoteStore: ObservableObject {
         let page = Page(context: viewContext)
         page.id = UUID()
         page.drawingData = nil
+        page.version = 0
 
         doc.pages = NSOrderedSet(object: page)
 
@@ -110,6 +111,7 @@ final class NoteStore: ObservableObject {
         let page = Page(context: viewContext)
         page.id = UUID()
         page.drawingData = nil
+        page.version = 0
 
         let mutable = document.pages.mutableCopy() as! NSMutableOrderedSet
         mutable.add(page)
@@ -141,29 +143,76 @@ final class NoteStore: ObservableObject {
         let blank = Page(context: viewContext)
         blank.id = UUID()
         blank.drawingData = nil
+        blank.version = 0
         document.pages = NSOrderedSet(object: blank)
         document.updatedAt = Date()
         try? viewContext.save()
     }
 
     // MARK: - Drawing persistence
+    //
+    // All writes are addressed by the page's UUID (not a managed-object
+    // reference) so the only caller — C-030 DrawingSessionManager — never has
+    // to hold a main-context Page across threads. Every write carries a
+    // monotonic `version`; the store accepts it only when it is strictly
+    // greater than the stored version (see `writeDrawing`). Combined with the
+    // session manager's single-active-canvas gating, this guarantees a stale
+    // (inactive) canvas can never overwrite newer handwriting.
 
-    /// Save the drawing data for a page. The disk write happens on a
-    /// background serial queue + background context so the caller's
-    /// thread (typically main) is never blocked by disk I/O, and
-    /// concurrent saves can't race for the same row.
-    func savePageDrawing(_ data: Data, page: Page) {
-        let objectID = page.objectID
+    /// Read the current drawing blob and version for a page, on the main
+    /// view context. Returns nil if no page with that id exists.
+    /// Called by DrawingSessionManager when (re)loading a canvas so its
+    /// in-memory version stamp is seeded from the canonical store value.
+    func drawing(forPageID id: UUID) -> (data: Data?, version: Int64)? {
+        let request = NSFetchRequest<Page>(entityName: "Page")
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        guard let page = try? viewContext.fetch(request).first else { return nil }
+        return (page.drawingData, page.version)
+    }
+
+    /// Asynchronous, debounced save path (drawing-changed while writing).
+    /// Hops onto the serial save queue + a background context so the main
+    /// thread is never blocked by disk I/O.
+    func savePageDrawing(_ data: Data, pageID: UUID, version: Int64) {
         saveQueue.async { [container] in
             let bg = container.newBackgroundContext()
             bg.performAndWait {
-                guard let bgPage = try? bg.existingObject(with: objectID) as? Page else {
-                    return
-                }
-                bgPage.drawingData = data
-                bgPage.document?.updatedAt = Date()
-                try? bg.save()
+                Self.writeDrawing(data, pageID: pageID, version: version, in: bg)
             }
         }
+    }
+
+    /// Synchronous flush path. Used for the mode-switch / page-turn / overlay
+    /// handoffs and `willResignActive`, where the next step (reloading another
+    /// canvas of the same page, or app suspension) must observe this write as
+    /// already committed. Blocks the caller until the background context saves.
+    func savePageDrawingSync(_ data: Data, pageID: UUID, version: Int64) {
+        let bg = container.newBackgroundContext()
+        bg.performAndWait {
+            Self.writeDrawing(data, pageID: pageID, version: version, in: bg)
+        }
+    }
+
+    /// Core write with the optimistic-concurrency guard. Runs inside the
+    /// given background context's queue. A write whose `version` is not
+    /// strictly greater than the stored version is dropped — this is the
+    /// last-line backstop against a stale canvas clobbering newer strokes.
+    private static func writeDrawing(_ data: Data,
+                                     pageID: UUID,
+                                     version: Int64,
+                                     in ctx: NSManagedObjectContext) {
+        let request = NSFetchRequest<Page>(entityName: "Page")
+        request.predicate = NSPredicate(format: "id == %@", pageID as CVarArg)
+        request.fetchLimit = 1
+        guard let page = try? ctx.fetch(request).first else { return }
+        guard version > page.version else {
+            // Stale or duplicate write — ignore so newer handwriting survives.
+            return
+        }
+        page.drawingData = data
+        page.version = version
+        page.document?.updatedAt = Date()
+        try? ctx.save()
     }
 }

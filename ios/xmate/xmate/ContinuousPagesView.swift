@@ -63,6 +63,18 @@ struct ContinuousPagesView: View {
     /// Using a let constant means the restore is immune to that race.
     let restorePageIndex: Int
 
+    /// True when userZoom > 1.0. While zoomed, scrolling is disabled and the
+    /// whole stack is scaled/offset by WritingScreen so the current page fills
+    /// the viewport — there is NO separate overlay canvas. Finger panning is
+    /// handled by the current page's own canvas recogniser.
+    let isZoomed: Bool
+
+    /// Zoom-pan callbacks (F-053). Forwarded ONLY to the current page's
+    /// PencilKitBridge while zoomed, so exactly one canvas — the same one the
+    /// user writes on — owns the pan gesture. nil otherwise.
+    let fingerPanChanged: ((CGSize) -> Void)?
+    let fingerPanEnded: (() -> Void)?
+
     // MARK: - Constants
 
     /// Inter-page gap in display points (F-056 Visual Spec).
@@ -102,6 +114,9 @@ struct ContinuousPagesView: View {
                     }
                 }
                 .background(Color(.systemGroupedBackground))
+                // While zoomed, freeze scrolling: the current page is panned
+                // via its own canvas finger-pan recogniser, not the ScrollView.
+                .scrollDisabled(isZoomed)
 
                 // ── Restore position on appear ─────────────────────────────
                 // Scrolls to restorePageIndex (a let constant) on first
@@ -109,6 +124,18 @@ struct ContinuousPagesView: View {
                 // the async fires, onScrollGeometryChange has already set it
                 // to 0 for the initial offset-0 geometry.
                 .onAppear {
+                    // Declare the active page for the session manager so the
+                    // matching canvas is promoted (flush previous → reload →
+                    // first responder → ToolPicker) once it registers. This is
+                    // the explicit handoff on entry / mode switch into
+                    // Continuous; no canvas grabs first responder on its own.
+                    let restore = (restorePageIndex >= 0 && restorePageIndex < pages.count)
+                        ? restorePageIndex : 0
+                    if restore < pages.count, let restoreID = pages[restore].id {
+                        DrawingSessionManager.shared
+                            .setDesiredActive(pageID: restoreID,
+                                              role: .continuous)
+                    }
                     guard restorePageIndex > 0,
                           restorePageIndex < pages.count else { return }
                     DispatchQueue.main.async {
@@ -185,12 +212,22 @@ struct ContinuousPagesView: View {
     private func pageItems(fitScale: CGFloat,
                            scaledW: CGFloat,
                            scaledH: CGFloat) -> some View {
-        ForEach(pages, id: \.id) { page in
+        ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
+            // Pan callbacks go ONLY to the current page while zoomed, so the
+            // single canvas the user writes on is also the one that pans. All
+            // other pages (and the unzoomed state) get nil → no pan recogniser.
+            let isCurrent = (index == currentPageIndex)
+            let panChanged = (isZoomed && isCurrent) ? fingerPanChanged : nil
+            let panEnded   = (isZoomed && isCurrent) ? fingerPanEnded   : nil
+
             PencilKitBridge(
                 page: page,
                 store: store,
+                role: .continuous,
                 onSwipeUp: nil,    // nil → no UISwipeGestureRecognizers added
-                onSwipeDown: nil   //       (they fight the ScrollView pan)
+                onSwipeDown: nil,  //       (they fight the ScrollView pan)
+                fingerPanChanged: panChanged,
+                fingerPanEnded: panEnded
             )
             // Frame 1: logical paper dimensions — PencilKit records strokes
             // in this coordinate space, preserving them across all iPad sizes.

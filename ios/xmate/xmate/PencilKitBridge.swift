@@ -17,17 +17,22 @@
 // handles .pencil touches internally, the pan handles .direct (finger)
 // touches, and they never interfere.
 //
-// Tool picker: owned by C-029 ToolPickerHost (app-wide singleton). This bridge
-// registers its canvas with ToolPickerHost in updateUIView (once the canvas
-// has a window) and deregisters in dismantleUIView. The picker therefore stays
-// visible across the LazyVStack recycling that Continuous mode performs.
+// Editing identity & saving: owned by C-030 DrawingSessionManager. This bridge
+// no longer saves directly, never decides first responder for itself, and never
+// touches the ToolPicker. In makeUIView it stamps the canvas with its pageID /
+// role; in updateUIView (deferred, once the canvas has a window) it REGISTERS
+// with the session manager; the session manager decides if/when this canvas
+// becomes the active editor (see DrawingSessionManager.makeActive /
+// setDesiredActive). Drawing changes are forwarded to the session manager,
+// which gates saving so only the active canvas writes.
 //
 // Lifecycle with page turning / recycling:
-//   makeUIView      — creates canvas, loads saved drawing.
-//   updateUIView    — deferred once: register with ToolPickerHost + becomeFirstResponder.
-//   dismantleUIView — flush pending strokes; unregister from ToolPickerHost.
-//                     iOS has already resigned first responder on the canvas
-//                     before SwiftUI fires dismantleUIView (window-detach order).
+//   makeUIView      — creates canvas, stamps pageID/role, loads saved drawing.
+//   updateUIView    — deferred once: register with DrawingSessionManager.
+//   dismantleUIView — DrawingSessionManager.unregister flushes (if active) and
+//                     deregisters from the ToolPicker. iOS has already resigned
+//                     first responder on the canvas before SwiftUI fires
+//                     dismantleUIView (window-detach order).
 //
 // The canvas is a bounded sheet: scrolling is disabled and the logical page
 // maps 1:1 to the view's bounds (F-053 bounded-page model).
@@ -39,6 +44,11 @@ import UIKit
 struct PencilKitBridge: UIViewRepresentable {
     let page: Page
     let store: NoteStore
+
+    /// Which structural slot this canvas occupies (Single vs Continuous).
+    /// Forwarded to the canvas + DrawingSessionManager so the active-canvas
+    /// policy can reason about it. Defaults to .single.
+    var role: CanvasRole = .single
 
     /// Finger-swipe callbacks for Single Page navigation (F-051).
     /// Pass nil in Continuous mode — no gesture recognisers are added,
@@ -60,8 +70,6 @@ struct PencilKitBridge: UIViewRepresentable {
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         weak var canvas: XmateCanvasView?
-        var page: Page?
-        var store: NoteStore?
 
         var onSwipeUp: (() -> Void)?
         var onSwipeDown: (() -> Void)?
@@ -71,36 +79,17 @@ struct PencilKitBridge: UIViewRepresentable {
         /// Weak ref so we can enable/disable the recogniser in updateUIView.
         weak var fingerPanRecognizer: UIPanGestureRecognizer?
 
-        var saveWorkItem: DispatchWorkItem?
-        private var backgroundObserver: NSObjectProtocol?
-
-        /// True once the canvas has been registered with ToolPickerHost.
+        /// True once the canvas has been registered with DrawingSessionManager.
         /// Prevents duplicate registration on subsequent updateUIView calls.
         var isRegistered: Bool = false
 
-        override init() {
-            super.init()
-            // Force-save when the app moves to background so no strokes are
-            // lost when the user homes out or the OS suspends the app.
-            backgroundObserver = NotificationCenter.default.addObserver(
-                forName: UIApplication.willResignActiveNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.saveNow()
-            }
-        }
-
-        deinit {
-            if let obs = backgroundObserver {
-                NotificationCenter.default.removeObserver(obs)
-            }
-        }
-
         // MARK: PKCanvasViewDelegate
 
+        /// Forward to the session manager, which gates saving so only the
+        /// active canvas for this page actually writes to Core Data.
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            scheduleSave()
+            guard let canvas = canvasView as? XmateCanvasView else { return }
+            DrawingSessionManager.shared.canvasDrawingChanged(canvas)
         }
 
         // MARK: Gesture targets
@@ -120,25 +109,6 @@ struct PencilKitBridge: UIViewRepresentable {
             default:
                 break
             }
-        }
-
-        // MARK: Save helpers
-
-        /// Coalesce rapid stroke changes: debounce saves by 250 ms.
-        func scheduleSave() {
-            saveWorkItem?.cancel()
-            let item = DispatchWorkItem { [weak self] in self?.saveNow() }
-            saveWorkItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
-        }
-
-        /// Encode and persist the current canvas drawing to Core Data.
-        func saveNow() {
-            guard let canvas = canvas,
-                  let page   = page,
-                  let store  = store else { return }
-            let data = StrokeSerializer.encode(canvas.drawing)
-            store.savePageDrawing(data, page: page)
         }
     }
 
@@ -165,10 +135,15 @@ struct PencilKitBridge: UIViewRepresentable {
         canvas.tool = PKInkingTool(.pen, color: .black, width: 4)
         canvas.delegate = context.coordinator
         context.coordinator.canvas = canvas
-        context.coordinator.page   = page
-        context.coordinator.store  = store
 
-        // Restore saved drawing for this page.
+        // Stamp the canvas with its editing identity so DrawingSessionManager
+        // and ToolPickerHost can reason about it without a side table.
+        canvas.pageID = page.id
+        canvas.role   = role
+
+        // Restore saved drawing for this page (fast first paint). The session
+        // manager may reload from the canonical store when it makes this canvas
+        // active, which supersedes this snapshot if a newer one exists.
         if let data = page.drawingData, let drawing = StrokeSerializer.decode(data) {
             canvas.drawing = drawing
         }
@@ -238,55 +213,45 @@ struct PencilKitBridge: UIViewRepresentable {
         context.coordinator.onSwipeDown      = onSwipeDown
         context.coordinator.fingerPanChanged = fingerPanChanged
         context.coordinator.fingerPanEnded   = fingerPanEnded
-        context.coordinator.store            = store
+
+        // Keep identity current in case the same canvas is reused for a
+        // different page (defensive — Single uses .id(page.id) so this is
+        // normally a fresh canvas, but Continuous reuse must stay correct).
+        uiView.pageID = page.id
+        uiView.role   = role
 
         // Enable the finger pan recogniser only when pan callbacks are provided
         // (i.e. when userZoom > 1.0). Disabling it at fit ensures it cannot
         // compete with the swipe recognisers for page-navigation gestures.
         context.coordinator.fingerPanRecognizer?.isEnabled = (fingerPanChanged != nil)
 
-        // Register with ToolPickerHost once, deferred one runloop tick so
+        // Register with DrawingSessionManager once, deferred one runloop tick so
         // the hosting view is fully laid out and the canvas has a window.
         //
-        // becomeFirstResponder is called only when the host has no current
-        // anchor (needsFirstResponder == true). This prevents each newly-
-        // entering LazyVStack canvas from stealing FR away from the canvas
-        // the user is actively writing on. In Single Page mode the old
-        // canvas is always dismantled before the new one registers, so
-        // anchor is nil and the new canvas becomes FR correctly. In
-        // Continuous mode a canvas that enters view without an anchor
-        // (e.g. app launch, style switch) becomes FR; all later ones rely
-        // on PKCanvasView's own becomeFirstResponder-on-Pencil-touch to
-        // update the anchor when the user taps a different page.
+        // We never call becomeFirstResponder here. The session manager decides
+        // activation: a view declares its intended active page via
+        // setDesiredActive, and register() promotes the matching canvas. This
+        // removes the old "whoever registers with a nil anchor grabs FR" race.
         DispatchQueue.main.async {
             guard uiView.window != nil,
                   !context.coordinator.isRegistered else { return }
             context.coordinator.isRegistered = true
-            ToolPickerHost.shared.register(uiView)
-            if ToolPickerHost.shared.needsFirstResponder {
-                uiView.becomeFirstResponder()
-            }
+            DrawingSessionManager.shared.register(uiView, role: role, visible: true)
         }
     }
 
     /// Called by SwiftUI when the view is removed from the hierarchy — on page
-    /// turn (Single Page uses .id(page.id)), on LazyVStack recycling (Continuous
-    /// mode), or on app exit.
+    /// turn (Single Page uses .id(page.id)), on mode switch, or on app exit.
     ///
-    /// iOS first-responder / dismantleUIView ordering: iOS resigns first
-    /// responder on the canvas when it detaches from the window, BEFORE SwiftUI
-    /// calls dismantleUIView. XmateCanvasView.resignFirstResponder already
-    /// notified ToolPickerHost and scheduled a re-anchor. Here we only flush
-    /// strokes and remove the canvas from the host registry.
+    /// DrawingSessionManager.unregister synchronously flushes this canvas IF it
+    /// is still the active editor of its page (so its strokes are committed
+    /// before teardown), then deregisters it from the ToolPicker. An inactive
+    /// canvas — e.g. the old single canvas after a mode switch already handed
+    /// the page to a continuous canvas — is NOT flushed, so it cannot overwrite
+    /// the new active canvas's newer drawing.
     static func dismantleUIView(_ uiView: XmateCanvasView, coordinator: Coordinator) {
-        coordinator.saveWorkItem?.cancel()
-        coordinator.saveWorkItem = nil
-        if let page = coordinator.page, let store = coordinator.store {
-            let data = StrokeSerializer.encode(uiView.drawing)
-            store.savePageDrawing(data, page: page)
-        }
         if coordinator.isRegistered {
-            ToolPickerHost.shared.unregister(uiView)
+            DrawingSessionManager.shared.unregister(uiView)
             coordinator.isRegistered = false
         }
     }
