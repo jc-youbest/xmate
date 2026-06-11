@@ -156,6 +156,23 @@ and `resignFirstResponder` to notify ToolPickerHost — the only reliable
 way to track which of several simultaneously visible canvases holds
 Pencil focus.
 
+### Explicit tool push (stage 4 bug fix)
+
+PencilKit's implicit observer/first-responder tool delivery proved
+unreliable under Single Page flip + zoom churn: a pinch resigns the
+canvas's first responder, recovery re-promotes it asynchronously, and a
+tool change landing in that window is missed by the writing canvas. On
+device this surfaced as color changes being silently ignored (the
+canvas keeps inking with its stale `tool`) while the picker UI showed
+the new selection; rare, and self-healing on a style switch because the
+handoff re-binds the picker.
+
+ToolPickerHost is therefore itself a PKToolPickerObserver: every
+selected-tool change is explicitly pushed into all registered
+canvases' `tool`, and `register` / `setActiveCanvas` stamp the canvas
+with the picker's current tool. Tool state is convergent — a missed
+notification is healed at the next change or the next handoff.
+
 ## Notes
 
 The two Pagination Styles are deliberately equal — neither is the

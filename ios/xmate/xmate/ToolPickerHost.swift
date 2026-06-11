@@ -68,30 +68,79 @@ final class XmateCanvasView: PKCanvasView {
 ///
 /// Singleton. All methods are main-thread only. Has no opinion about which
 /// canvas is active; it merely reflects the session manager's decisions.
-final class ToolPickerHost {
+///
+/// EXPLICIT TOOL PUSH — why this host is itself a PKToolPickerObserver:
+///
+///   PKCanvasView adopts the picker's selected tool through PencilKit's
+///   implicit observer/first-responder delivery. That delivery proved
+///   unreliable under Single Page's flip + zoom churn: a pinch makes
+///   PencilKit resign the canvas's first responder, our recovery re-promotes
+///   it asynchronously, and a tool change landing inside that window can be
+///   missed by the canvas the user is writing on. Symptom on device: color
+///   changes silently ignored (the canvas keeps drawing with its stale
+///   `tool`) while the picker UI shows the new selection — writing itself
+///   never needs first responder, so nothing else looks wrong.
+///
+///   The fix makes tool state CONVERGENT instead of delivery-dependent:
+///   1. this host observes the picker and pushes every selected-tool change
+///      explicitly into ALL registered canvases' `tool`;
+///   2. `register` and `setActiveCanvas` stamp the canvas with the picker's
+///      current tool, so a canvas that missed notifications (or was just
+///      created) adopts the current selection at the next handoff.
+///   Assigning `tool` is idempotent, so double delivery (implicit + push)
+///   is harmless.
+///
+/// NSObject subclass because PKToolPickerObserver is an @objc protocol.
+final class ToolPickerHost: NSObject, PKToolPickerObserver {
     static let shared = ToolPickerHost()
-    private init() {}
 
     /// The one PKToolPicker for the entire app. PencilKitBridge never
     /// creates its own instance.
     let picker = PKToolPicker()
 
+    /// All registered canvases (weak). Target set for the explicit tool push.
+    private let canvases = NSHashTable<XmateCanvasView>.weakObjects()
+
+    private override init() {
+        super.init()
+        picker.addObserver(self)
+    }
+
     /// Start observing a canvas so the picker can show its tools when this
     /// canvas (later) becomes the active first responder. Does NOT make the
-    /// picker visible — that only happens via `setActiveCanvas`.
+    /// picker visible — that only happens via `setActiveCanvas`. Stamps the
+    /// canvas with the picker's current tool so it never starts stale.
     func register(_ canvas: XmateCanvasView) {
         picker.addObserver(canvas)
+        canvases.add(canvas)
+        canvas.tool = picker.selectedTool
     }
 
     /// Stop observing a canvas. Called from DrawingSessionManager.unregister.
     func unregister(_ canvas: XmateCanvasView) {
         picker.removeObserver(canvas)
+        canvases.remove(canvas)
     }
 
     /// Bind the picker to the one canvas the session manager has designated
     /// active. This is the ONLY place the picker is made visible, so it can
-    /// never end up anchored to a hidden or inactive canvas.
+    /// never end up anchored to a hidden or inactive canvas. Re-stamps the
+    /// canvas with the current tool — the convergence point that heals any
+    /// notification missed during first-responder churn.
     func setActiveCanvas(_ canvas: XmateCanvasView) {
+        canvas.tool = picker.selectedTool
         picker.setVisible(true, forFirstResponder: canvas)
+    }
+
+    // MARK: PKToolPickerObserver — explicit tool push
+
+    /// Push every selected-tool change to all live canvases, regardless of
+    /// first-responder state. This is what makes a color change reach the
+    /// canvas being written on even mid resign/become churn.
+    func toolPickerSelectedToolDidChange(_ toolPicker: PKToolPicker) {
+        let tool = toolPicker.selectedTool
+        for canvas in canvases.allObjects {
+            canvas.tool = tool
+        }
     }
 }
