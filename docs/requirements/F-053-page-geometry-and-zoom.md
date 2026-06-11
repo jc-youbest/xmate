@@ -54,7 +54,14 @@ When user pinches the page with two fingers:
   scales together as one unit; the logical page itself is unchanged.
 - Minimum zoom is `fitScale` (the page fits the viewport exactly). The
   user cannot zoom out below fit — there is no "smaller than screen" state.
-- Maximum zoom is unbounded above `fitScale`; no hard cap is enforced.
+- Maximum zoom is 3× fitScale (300%) — the roadmap's 1×–3× range.
+  (An earlier revision left this unbounded; capped in stage 4.)
+- U-112 ZoomHUD — a centered, translucent percentage readout
+  (100%–300%) — appears while pinching and fades out 1 s after the
+  fingers lift. It never intercepts touches. This matches the
+  convention of mainstream handwriting apps.
+- U-102 WritingTopBar stays visible at all zoom levels: the canvas
+  area is clipped, so the scaled page can never paint over the bar.
 - **At fit (zoomScale == fitScale) — "unzoomed state":**
   - Single Page: finger swipes drive page turning (F-051).
   - Continuous: finger pan drives free scroll between pages (F-056).
@@ -64,11 +71,17 @@ When user pinches the page with two fingers:
   - Single Page: swipe-driven page turning is suspended.
   - Continuous: free scroll between pages is suspended; only pan within
     the current page is possible.
-  - The user returns to the unzoomed state by pinching back to fitScale.
+  - U-113 ZoomResetButton appears in U-102 WritingTopBar showing the
+    live percentage (e.g. "153%"); tapping it restores 100%.
+  - The user returns to the unzoomed state by pinching back to
+    fitScale, double-tapping the page with a finger, or tapping
+    U-113 ZoomResetButton. An explicit reset flashes U-112 ZoomHUD
+    ("100%") once as feedback.
 
-When user double-taps with a finger inside the page (optional, not v1-required):
-- The page toggles between `fitScale` and an intermediate fixed zoom
-  (e.g. 2× of fitScale) centered on the tap point.
+When user double-taps with a finger inside the page while zoomed:
+- The page animates back to 100% (fit). At fit, a finger double-tap
+  is a no-op. (The earlier idea of toggling up to an intermediate
+  zoom on double-tap at fit remains optional and unimplemented.)
 
 When the iPad screen size differs across the user's devices:
 - The paper's logical size is unchanged; only `fitScale` differs. A
@@ -155,24 +168,34 @@ Stage 2 decisions (with the stage 2.5 refactor folded in):
   Resolution: delete and reinstall the app on the dev device before
   testing stage 2; the new persistent store starts clean.
 
-- **Zoom (stage 3)**: implemented in `WritingScreen.swift`.
-  - `userZoom: CGFloat` state in WritingScreen — minimum 1.0×
-    (fit), no upper cap. Reset to 1.0 on every page change.
+- **Zoom (stage 3, reworked in stage 4)**: state and gesture math
+  live in **C-031 PageZoomModel** (`PageZoom.swift`), consumed by
+  WritingScreen for both Pagination Styles.
+  - `userZoom` clamped to 1.0×–3.0× (fit to 300%). Reset (without
+    HUD flash) on every page change so each page opens at fit.
   - `MagnificationGesture` attached as `.simultaneousGesture` on
-    the canvas ZStack; clamps to ≥ 1.0 so the user cannot zoom
-    below fit.
-  - `DragGesture` attached as `.simultaneousGesture`; no-op guard
-    when `userZoom == 1.0` so ScrollView / swipe recognisers
-    receive the gesture unimpeded at fit.
-  - Pan offset bounded by `halfOverflowX / halfOverflowY` so the
-    page edge never passes the viewport edge.
-  - **Single Page zoomed state**: `onSwipeUp` / `onSwipeDown`
-    callbacks passed as `nil` to PencilKitBridge → no
-    UISwipeGestureRecognizers are added → pagination suspended.
-  - **Continuous zoomed state**: `ContinuousZoomOverlay` (private
-    struct in WritingScreen) covers the viewport, blocking the
-    ScrollView from receiving finger pan events. Pencil still
-    reaches the underlying PKCanvasView via Apple Pencil's
-    separate UIEvent path.
-  - Both modes share the same `userZoom` / `zoomPanOffset` state
-    and the same pinch + pan gesture handlers.
+    the canvas area (two-finger; never conflicts with Pencil).
+  - **Finger panning**: a `UIPanGestureRecognizer` with
+    `allowedTouchTypes = [.direct]` attached directly to
+    PKCanvasView inside C-002 PencilKitBridge — the only reliable
+    way to accept finger panning while writing with Pencil.
+    Pan offset bounded by the half-overflow per axis so the page
+    edge never passes the viewport edge.
+  - **U-112 ZoomHUD**: centered translucent percentage capsule;
+    shown on pinch change, hidden 1 s after pinch end
+    (`PageZoomModel.hudLinger`); touch-transparent.
+  - **Reset to 100%**: finger double-tap on the page (finger-only
+    `UITapGestureRecognizer` in PencilKitBridge, both styles) or
+    U-113 ZoomResetButton in the top bar. Both animate the reset
+    and flash the HUD once.
+  - **Top bar never covered**: WritingScreen applies `.clipped()`
+    to the canvas area, so the scaled page cannot paint over
+    U-102 WritingTopBar.
+  - **Single Page zoomed state**: swipe callbacks passed as `nil`
+    → pagination suspended; the recognisers stay attached (no-op
+    dispatch), so toggling zoom never recreates a canvas.
+  - **Continuous zoomed state**: the ScrollView is frozen
+    (`scrollDisabled`) and the whole stack is scaled/offset; the
+    SAME current-page canvas keeps editing and owns the finger
+    pan. No overlay canvas — the one-canvas-per-Page invariant
+    (C-030) holds.

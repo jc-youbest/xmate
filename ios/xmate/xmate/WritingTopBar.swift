@@ -1,7 +1,8 @@
 // U-102 WritingTopBar
 //
-// Thin top bar for writing mode (F-051 / F-056). Contains:
+// Thin top bar for writing mode (F-051 / F-053 / F-056). Contains:
 //   U-093 PageIndicator       — current position, e.g. "1 / 3"
+//   U-113 ZoomResetButton     — live zoom percentage while zoomed; tap → 100%
 //   U-095 AddPageButton       — appends a new blank page
 //   U-103 WritingOverflowMenu — modal: pagination style, delete page, delete document
 //     └ U-111 PaginationStylePicker — Picker toggling Single Page ↔ Continuous (F-056)
@@ -19,6 +20,12 @@ struct WritingTopBar: View {
     /// Global pagination style — reflected and updated by U-111 PaginationStylePicker.
     @Binding var paginationStyle: PaginationStyle
 
+    /// Current zoom percentage while zoomed (e.g. 153), nil at fit (F-053).
+    /// Non-nil shows U-113 ZoomResetButton.
+    let zoomPercent: Int?
+    /// Tap on U-113 ZoomResetButton — restores 100% (fit).
+    let onResetZoom: () -> Void
+
     let onAddPage: () -> Void
     let onDeletePage: () -> Void
     let onDeleteDocument: () -> Void
@@ -34,6 +41,22 @@ struct WritingTopBar: View {
                 .padding(.leading, 16)
 
             Spacer()
+
+            // U-113 ZoomResetButton — visible only while zoomed (F-053).
+            // Shows the live percentage; tapping restores 100% (fit).
+            if let zoomPercent {
+                Button(action: onResetZoom) {
+                    Text("\(zoomPercent)%")
+                        .font(.subheadline)
+                        .monospacedDigit()
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(.quaternary, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                .padding(.trailing, 8)
+            }
 
             // U-095 AddPageButton
             Button(action: onAddPage) {
@@ -87,6 +110,8 @@ struct WritingTopBar: View {
             currentIndex: 1,
             pageCount: 5,
             paginationStyle: .constant(.singlePage),
+            zoomPercent: 153,
+            onResetZoom: {},
             onAddPage: {},
             onDeletePage: {},
             onDeleteDocument: {}

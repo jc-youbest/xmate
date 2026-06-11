@@ -42,8 +42,8 @@ PaginationStylePicker:
 When U-101 WritingScreen is rendered with `paginationStyle == .singlePage`:
 - The screen shows exactly one page at a time, centered and fit-scaled
   per F-053 (`PageGeometry.fitScale`). Page navigation uses finger
-  swipes along `paper.paginationAxis` (F-051). This is the v1 stage-2
-  behaviour (SinglePagesView).
+  swipes along `paper.paginationAxis` (F-051): up/down for portrait
+  paper, left/right for landscape paper (SinglePagesView).
 
 When U-101 WritingScreen is rendered with `paginationStyle == .continuous`:
 - Pages stack along `paper.paginationAxis` inside a free-scrolling
@@ -90,6 +90,29 @@ When the user adds or deletes a page while in Continuous:
 - Default for first-launch / unset value: `.singlePage`.
 
 ## Architecture Notes (from stage 3 implementation)
+
+### Single Page — persistent offset carousel (stage 4 redesign)
+
+The original SinglePagesView kept ONE canvas and used `.id(page.id)` to
+force SwiftUI to destroy and recreate the PKCanvasView on every page
+turn. Canvas teardown + recreation mid-transition caused a visible
+flicker on every flip. Single Page and Continuous are deliberately
+DIFFERENT designs — Single Page must not borrow the recreate-per-page
+approach.
+
+The redesign keeps ALL page canvases permanently alive in a ZStack —
+the same all-canvases-alive decision Continuous made for the
+PKToolPicker (below). Each page is offset along `paper.paginationAxis`
+by `(index − currentPageIndex) × stride`, where `stride = viewport
+extent + 20 pt gap`, so exactly one page is on-screen. A page turn
+animates `currentPageIndex` only: offsets shift by one stride, no
+canvas is created or destroyed, zero flicker. The flip direction falls
+out of the offset math — no transition edges, no direction state.
+
+The active editor still moves via C-030 DrawingSessionManager
+(`setDesiredActive` on appear and on every index change), identical to
+Continuous. While zoomed (F-053), only the current page scales and
+receives pan callbacks; `zIndex` keeps it above its neighbours.
 
 ### No snap — permanent decision
 

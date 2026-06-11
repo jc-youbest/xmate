@@ -36,7 +36,7 @@
 //   • Each PencilKitBridge registers/deregisters with ToolPickerHost.
 //   • With plain VStack the only removal scenario is page deletion;
 //     ToolPickerHost re-anchors to the adjacent live canvas.
-//   • onSwipeUp/onSwipeDown are nil → PencilKitBridge skips the
+//   • enableSwipeNavigation is false → PencilKitBridge skips the
 //     UISwipeGestureRecognizer additions that would fight the ScrollView.
 
 import SwiftUI
@@ -74,6 +74,10 @@ struct ContinuousPagesView: View {
     /// user writes on — owns the pan gesture. nil otherwise.
     let fingerPanChanged: ((CGSize) -> Void)?
     let fingerPanEnded: (() -> Void)?
+
+    /// Finger double-tap → reset zoom to 100% (F-053). Forwarded to every
+    /// page's canvas; WritingScreen no-ops it when not zoomed.
+    let onFingerDoubleTap: (() -> Void)?
 
     // MARK: - Constants
 
@@ -241,8 +245,10 @@ struct ContinuousPagesView: View {
                 page: page,
                 store: store,
                 role: .continuous,
-                onSwipeUp: nil,    // nil → no UISwipeGestureRecognizers added
-                onSwipeDown: nil,  //       (they fight the ScrollView pan)
+                // false → no UISwipeGestureRecognizers added
+                // (they fight the ScrollView pan)
+                enableSwipeNavigation: false,
+                onFingerDoubleTap: onFingerDoubleTap,
                 fingerPanChanged: panChanged,
                 fingerPanEnded: panEnded
             )

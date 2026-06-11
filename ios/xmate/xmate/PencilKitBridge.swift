@@ -3,10 +3,21 @@
 // SwiftUI wrapper around XmateCanvasView (a PKCanvasView subclass).
 //
 // Drawing policy: .pencilOnly — fingers are reserved for navigation (F-001,
-// F-051). In Single Page mode two UISwipeGestureRecognizers (up/down,
-// finger-only) are added to the canvas so WritingScreen can drive page turns.
-// In Continuous mode onSwipeUp/onSwipeDown are nil and no gesture recognisers
+// F-051). In Single Page mode two UISwipeGestureRecognizers (finger-only) are
+// added to the canvas so SinglePagesView can drive page turns. Their
+// directions derive from swipeAxis (paper.paginationAxis): vertical paper →
+// up/down, horizontal (landscape) paper → left/right. Forward = next page
+// (swipe up / swipe left); backward = previous page (swipe down / right).
+// In Continuous mode enableSwipeNavigation is false and no swipe recognisers
 // are added — they would fight the enclosing ScrollView's pan gesture.
+//
+// The recognisers are attached whenever enableSwipeNavigation is true, even
+// if the callbacks are momentarily nil (e.g. created while zoomed): dispatch
+// goes through the Coordinator, whose callbacks updateUIView keeps current,
+// so nil callbacks are a no-op rather than a missing recogniser.
+//
+// A finger-only double-tap recogniser is always attached (both roles). It
+// forwards to onFingerDoubleTap — used by F-053 to reset zoom to 100%.
 //
 // Zoom pan (F-053): when fingerPanChanged/fingerPanEnded are provided,
 // a UIPanGestureRecognizer restricted to allowedTouchTypes = [.direct]
@@ -50,11 +61,24 @@ struct PencilKitBridge: UIViewRepresentable {
     /// policy can reason about it. Defaults to .single.
     var role: CanvasRole = .single
 
-    /// Finger-swipe callbacks for Single Page navigation (F-051).
-    /// Pass nil in Continuous mode — no gesture recognisers are added,
-    /// which prevents interference with the enclosing ScrollView.
-    var onSwipeUp: (() -> Void)?
-    var onSwipeDown: (() -> Void)?
+    /// Attach finger-swipe recognisers for Single Page navigation (F-051).
+    /// False in Continuous mode — recognisers would interfere with the
+    /// enclosing ScrollView's pan gesture.
+    var enableSwipeNavigation: Bool = false
+
+    /// Axis the swipe navigation runs along — paper.paginationAxis.
+    /// .vertical → up/down swipes; .horizontal → left/right swipes.
+    var swipeAxis: Axis = .vertical
+
+    /// Swipe callbacks (F-051). Forward = next page (swipe up on portrait
+    /// paper, swipe left on landscape paper); backward = previous page.
+    /// Pass nil while zoomed (F-053) — pagination is suspended; the
+    /// recognisers stay attached but dispatch becomes a no-op.
+    var onSwipeForward: (() -> Void)?
+    var onSwipeBackward: (() -> Void)?
+
+    /// Finger double-tap callback (F-053). Used to reset zoom to 100%.
+    var onFingerDoubleTap: (() -> Void)?
 
     /// Zoom-pan callbacks (F-053). When non-nil, a finger-only
     /// UIPanGestureRecognizer is enabled on the canvas.
@@ -71,8 +95,9 @@ struct PencilKitBridge: UIViewRepresentable {
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         weak var canvas: XmateCanvasView?
 
-        var onSwipeUp: (() -> Void)?
-        var onSwipeDown: (() -> Void)?
+        var onSwipeForward: (() -> Void)?
+        var onSwipeBackward: (() -> Void)?
+        var onFingerDoubleTap: (() -> Void)?
 
         var fingerPanChanged: ((CGSize) -> Void)?
         var fingerPanEnded: (() -> Void)?
@@ -94,8 +119,9 @@ struct PencilKitBridge: UIViewRepresentable {
 
         // MARK: Gesture targets
 
-        @objc func handleSwipeUp()   { onSwipeUp?()   }
-        @objc func handleSwipeDown() { onSwipeDown?() }
+        @objc func handleSwipeForward()  { onSwipeForward?()  }
+        @objc func handleSwipeBackward() { onSwipeBackward?() }
+        @objc func handleDoubleTap()     { onFingerDoubleTap?() }
 
         @objc func handleFingerPan(_ r: UIPanGestureRecognizer) {
             // translation(in: nil) returns window coordinates, which equal
@@ -148,37 +174,49 @@ struct PencilKitBridge: UIViewRepresentable {
             canvas.drawing = drawing
         }
 
+        // allowedTouchTypes = [.direct] excludes Apple Pencil.
+        let fingerOnly: [NSNumber] = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+
         // Finger-only swipe recognisers for page turning in Single Page mode.
-        // Skipped entirely when callbacks are nil (Continuous mode) — adding
-        // them would interfere with the enclosing ScrollView's pan gesture.
-        if onSwipeUp != nil || onSwipeDown != nil {
-            // allowedTouchTypes = [.direct] excludes Apple Pencil.
-            let fingerOnly: [NSNumber] = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        // Attached whenever swipe navigation is enabled — even if callbacks
+        // are momentarily nil — so a canvas created while zoomed still turns
+        // pages once the zoom resets (Coordinator dispatch no-ops on nil).
+        // Skipped in Continuous mode (enableSwipeNavigation == false): they
+        // would interfere with the enclosing ScrollView's pan gesture.
+        if enableSwipeNavigation {
+            // Forward = next page: swipe up (vertical) / swipe left (horizontal).
+            let forward = UISwipeGestureRecognizer(
+                target: context.coordinator,
+                action: #selector(Coordinator.handleSwipeForward)
+            )
+            forward.direction = (swipeAxis == .vertical) ? .up : .left
+            forward.allowedTouchTypes = fingerOnly
+            // cancelsTouchesInView = false so the PKCanvasView still receives
+            // the touch for other purposes (e.g. tap-to-focus).
+            forward.cancelsTouchesInView = false
+            canvas.addGestureRecognizer(forward)
 
-            if onSwipeUp != nil {
-                let swipeUp = UISwipeGestureRecognizer(
-                    target: context.coordinator,
-                    action: #selector(Coordinator.handleSwipeUp)
-                )
-                swipeUp.direction = .up
-                swipeUp.allowedTouchTypes = fingerOnly
-                // cancelsTouchesInView = false so the PKCanvasView still receives
-                // the touch for other purposes (e.g. tap-to-focus).
-                swipeUp.cancelsTouchesInView = false
-                canvas.addGestureRecognizer(swipeUp)
-            }
-
-            if onSwipeDown != nil {
-                let swipeDown = UISwipeGestureRecognizer(
-                    target: context.coordinator,
-                    action: #selector(Coordinator.handleSwipeDown)
-                )
-                swipeDown.direction = .down
-                swipeDown.allowedTouchTypes = fingerOnly
-                swipeDown.cancelsTouchesInView = false
-                canvas.addGestureRecognizer(swipeDown)
-            }
+            // Backward = previous page: swipe down (vertical) / right (horizontal).
+            let backward = UISwipeGestureRecognizer(
+                target: context.coordinator,
+                action: #selector(Coordinator.handleSwipeBackward)
+            )
+            backward.direction = (swipeAxis == .vertical) ? .down : .right
+            backward.allowedTouchTypes = fingerOnly
+            backward.cancelsTouchesInView = false
+            canvas.addGestureRecognizer(backward)
         }
+
+        // Finger-only double-tap recogniser (F-053 zoom reset). Always
+        // attached, both roles; dispatch no-ops when the callback is nil.
+        let doubleTap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleDoubleTap)
+        )
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.allowedTouchTypes = fingerOnly
+        doubleTap.cancelsTouchesInView = false
+        canvas.addGestureRecognizer(doubleTap)
 
         // Finger-only pan recogniser for zoom panning (F-053).
         // Always attached so it can be toggled without makeUIView re-running.
@@ -186,7 +224,6 @@ struct PencilKitBridge: UIViewRepresentable {
         // maximumNumberOfTouches = 1 ensures it doesn't fire during a two-finger
         // pinch (MagnificationGesture in WritingScreen).
         // cancelsTouchesInView = false keeps touch delivery to PencilKit intact.
-        let fingerOnly: [NSNumber] = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
         let pan = UIPanGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handleFingerPan(_:))
@@ -209,10 +246,11 @@ struct PencilKitBridge: UIViewRepresentable {
         uiView.isScrollEnabled = false
 
         // Keep coordinator callbacks current.
-        context.coordinator.onSwipeUp        = onSwipeUp
-        context.coordinator.onSwipeDown      = onSwipeDown
-        context.coordinator.fingerPanChanged = fingerPanChanged
-        context.coordinator.fingerPanEnded   = fingerPanEnded
+        context.coordinator.onSwipeForward    = onSwipeForward
+        context.coordinator.onSwipeBackward   = onSwipeBackward
+        context.coordinator.onFingerDoubleTap = onFingerDoubleTap
+        context.coordinator.fingerPanChanged  = fingerPanChanged
+        context.coordinator.fingerPanEnded    = fingerPanEnded
 
         // Keep identity current in case the same canvas is reused for a
         // different page (defensive — Single uses .id(page.id) so this is

@@ -4,14 +4,22 @@
 // variant of the Content Screen.
 //
 // Layout:
-//   U-102 WritingTopBar   — thin top bar (page indicator, add, overflow menu)
+//   U-102 WritingTopBar   — thin top bar (page indicator, zoom reset, add,
+//                           overflow menu). Always visible — the canvas area
+//                           below is clipped, so a zoomed page can never
+//                           paint over the bar.
 //   Canvas area           — routed to SinglePagesView or ContinuousPagesView
-//                           based on C-028 SettingsStore.paginationStyle (F-056)
+//                           based on C-028 SettingsStore.paginationStyle
+//                           (F-056), with U-112 ZoomHUD overlaid centered.
 //
-// Pagination Style routing (F-056, stage 3):
-//   .singlePage  → SinglePagesView: one full page, finger swipe to flip.
-//   .continuous  → ContinuousPagesView: free-scroll VStack with 20 pt
-//                  inter-page gaps and geometric current-page detection.
+// Pagination Style routing (F-056):
+//   .singlePage  → SinglePagesView: persistent offset carousel — all page
+//                  canvases stay alive; a flip animates offsets only (no
+//                  canvas destruction → no flicker). Flip axis derives from
+//                  paper.paginationAxis.
+//   .continuous  → ContinuousPagesView: free-scroll stack along
+//                  paper.paginationAxis with 20 pt gaps and geometric
+//                  current-page detection.
 //
 // Current page index is shared between both layouts via @State. In Single
 // Page mode it is set by swipe handlers; in Continuous mode it is derived
@@ -22,38 +30,31 @@
 // .scrollPosition(id:) is deliberately avoided — its bidirectional binding
 // silently snaps to the binding value and creates a perpetual snap loop.
 //
-// Zoom (F-053):
-//   userZoom ranges from 1.0 (fit) upward — no maximum cap.
-//   MagnificationGesture is attached as .simultaneousGesture to detect pinch.
-//
-//   Panning: a UIPanGestureRecognizer with allowedTouchTypes = [.direct] is
-//   attached directly to PKCanvasView inside PencilKitBridge. This is the
-//   only reliable way to accept finger panning while writing with Pencil:
-//   any covering UIView approach fails because event.allTouches is not yet
-//   populated during hitTest, so the pencil-type check is unreliable and
-//   pencil events get blocked. With the recogniser on the canvas itself,
-//   PencilKit handles .pencil events and our pan handles .direct events;
-//   they coexist on the same view without any interception.
-//
-//   When userZoom > 1.0 (zoomed state):
-//     • Single Page: swipe callbacks → nil (no pagination); pan callbacks
-//       → non-nil (finger pan enabled on the same canvas — no recreation).
-//     • Continuous: NO overlay canvas. The ScrollView is frozen
-//       (scrollDisabled) and the whole stack is scaled/offset here, while the
-//       SAME current-page canvas keeps editing and owns the finger-pan
-//       recogniser. This upholds the one-authoritative-canvas-per-Page
-//       invariant (C-030 DrawingSessionManager) — a page is never edited by a
-//       bottom canvas and an overlay canvas at once, so no drawing can be lost
-//       to a stale writer.
-//
-//   Zoom and pan are reset to their neutral values whenever the current page
-//   changes (onChange(of: currentPageIndex)) so every page opens at fit.
+// Zoom (F-053) — state and math live in C-031 PageZoomModel:
+//   • userZoom 1.0 (fit) … 3.0 (300% cap). Pinch via MagnificationGesture
+//     attached as .simultaneousGesture.
+//   • U-112 ZoomHUD: centered translucent percentage readout, visible while
+//     pinching, fades 1 s after the fingers lift.
+//   • Reset to 100%: finger double-tap on the page, or U-113 ZoomResetButton
+//     in the top bar (shows the live percentage while zoomed).
+//   • Panning: a UIPanGestureRecognizer with allowedTouchTypes = [.direct]
+//     attached directly to PKCanvasView inside PencilKitBridge — the only
+//     reliable way to accept finger panning while writing with Pencil
+//     (see C-002 header for why covering views fail).
+//   • While zoomed, Single Page suspends swipe pagination (nil callbacks)
+//     and Continuous freezes its ScrollView; in both styles the SAME
+//     current-page canvas keeps editing and owns the finger pan, upholding
+//     the one-authoritative-canvas-per-Page invariant (C-030).
+//   • Zoom resets (without HUD flash) on page change so every page opens
+//     at fit.
 //
 // Delete document (v1 stub): resets to a single blank page. F-011 will
 // replace this with navigation to U-002 NoteListScreen in v3.
 //
-// Paper: hard-coded to PaperPreset.letter for stage 3. Per-document paper
-// arrives with a Core Data migration in a later increment.
+// Paper: hard-coded to PaperPreset.letter for now. Per-document paper
+// arrives with a Core Data migration in a later increment; nothing in the
+// pagination / zoom layers branches on the paper's name, so that increment
+// only swaps where `paper` comes from.
 
 import SwiftUI
 
@@ -61,15 +62,15 @@ struct WritingScreen: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var settings: SettingsStore
 
+    /// Stage limitation: per-document paper lands with the Core Data
+    /// migration. Everything below derives behaviour from this value alone.
+    private let paper = PaperPreset.letter
+
     // MARK: - State
 
     @State private var document: Document?
     @State private var pages: [Page] = []
     @State private var currentPageIndex: Int = 0
-
-    /// Direction of the most recent page turn; drives the slide transition
-    /// edge in Single Page mode.
-    @State private var turningForward: Bool = true
 
     /// One-way scroll signal for Continuous mode Add Page.
     /// WritingScreen sets this to the new page's UUID; ContinuousPagesView
@@ -79,18 +80,8 @@ struct WritingScreen: View {
     @State private var showDeletePageAlert: Bool = false
     @State private var showDeleteDocumentAlert: Bool = false
 
-    // MARK: - Zoom state (F-053)
-
-    /// User-controlled zoom multiplier on top of fitScale. 1.0 = fit (minimum).
-    /// No upper cap. Reset to 1.0 on every page change.
-    @State private var userZoom: CGFloat = 1.0
-    /// Zoom level captured at the start of each MagnificationGesture session.
-    @State private var gestureBaseZoom: CGFloat = 1.0
-    /// Pan offset applied when userZoom > 1.0. Bounded by the half-overflow
-    /// on each axis so the page edge never passes the viewport edge.
-    @State private var zoomPanOffset: CGSize = .zero
-    /// Pan offset captured at the start of each finger pan gesture session.
-    @State private var gestureBasePan: CGSize = .zero
+    /// Zoom state + gesture math (F-053). C-031.
+    @StateObject private var zoom = PageZoomModel()
 
     // MARK: - Body
 
@@ -103,6 +94,8 @@ struct WritingScreen: View {
                     currentIndex: currentPageIndex,
                     pageCount: pages.count,
                     paginationStyle: $settings.paginationStyle,
+                    zoomPercent: zoom.isZoomed ? zoom.percent : nil,
+                    onResetZoom: resetZoom,
                     onAddPage: handleAddPage,
                     onDeletePage: { showDeletePageAlert = true },
                     onDeleteDocument: { showDeleteDocumentAlert = true }
@@ -137,76 +130,59 @@ struct WritingScreen: View {
     //
     // Extracted from body to stay within Swift's expression-complexity limit.
 
-    /// GeometryReader wrapper that computes fitScale and pan bounds, then
-    /// hosts the ZStack. Gestures and modifiers are attached here so they
-    /// share the same proxy size without re-entering a closure in body.
+    /// GeometryReader wrapper that computes the pan bounds, then hosts the
+    /// ZStack. Gestures and modifiers are attached here so they share the
+    /// same proxy size without re-entering a closure in body.
     @ViewBuilder
     private var canvasArea: some View {
         GeometryReader { proxy in
-            let fitScale = PageGeometry.fitScale(in: proxy.size,
-                                                 for: PaperPreset.letter)
+            let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
             // Half-overflow: how far the scaled page extends past each viewport
             // edge. Clamped to ≥ 0 so the bound is never inverted at fit.
-            let halfOverflowX = max(0,
-                (PaperPreset.letter.width  * fitScale * userZoom
-                 - proxy.size.width)  / 2)
-            let halfOverflowY = max(0,
-                (PaperPreset.letter.height * fitScale * userZoom
-                 - proxy.size.height) / 2)
-
-            canvasZStack(halfOverflowX: halfOverflowX,
-                         halfOverflowY: halfOverflowY)
-            // MagnificationGesture is two-finger; never conflicts with Pencil.
-            .simultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { value in
-                        let candidate = gestureBaseZoom * value
-                        userZoom = max(1.0, candidate)
-                        if userZoom <= 1.0 {
-                            zoomPanOffset = .zero
-                            gestureBasePan = .zero
-                        }
-                    }
-                    .onEnded { value in
-                        let final = max(1.0, gestureBaseZoom * value)
-                        userZoom = final
-                        gestureBaseZoom = final
-                        if final <= 1.0 {
-                            gestureBaseZoom = 1.0
-                            zoomPanOffset = .zero
-                            gestureBasePan = .zero
-                        }
-                    }
+            let halfOverflow = CGSize(
+                width: max(0, (paper.width * fitScale * zoom.userZoom
+                               - proxy.size.width) / 2),
+                height: max(0, (paper.height * fitScale * zoom.userZoom
+                                - proxy.size.height) / 2)
             )
+
+            canvasZStack(halfOverflow: halfOverflow)
+                // MagnificationGesture is two-finger; never conflicts with Pencil.
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { zoom.pinchChanged($0) }
+                        .onEnded { zoom.pinchEnded($0) }
+                )
+                // U-112 ZoomHUD — centered, transient, touch-transparent.
+                .overlay {
+                    if zoom.hudVisible {
+                        ZoomHUD(percent: zoom.percent)
+                    }
+                }
         }
+        // The zoomed page overflows its slot; clip so it never paints over
+        // U-102 WritingTopBar (F-053).
+        .clipped()
         .ignoresSafeArea(edges: .bottom)
         // Reset zoom and pan on every page change so each page opens at fit.
         .onChange(of: currentPageIndex) { _, _ in
-            userZoom = 1.0
-            gestureBaseZoom = 1.0
-            zoomPanOffset = .zero
-            gestureBasePan = .zero
+            zoom.reset()
         }
     }
 
     /// ZStack contents: the active pagination view. Pan callbacks are forwarded
     /// to the PencilKitBridge inside each view. There is no separate zoom
-    /// overlay canvas — Continuous zoom transforms the existing stack so a Page
-    /// is never edited by two canvases at once (object-lifecycle invariant).
+    /// overlay canvas — both styles transform existing canvases so a Page is
+    /// never edited by two canvases at once (object-lifecycle invariant).
     @ViewBuilder
-    private func canvasZStack(halfOverflowX: CGFloat,
-                              halfOverflowY: CGFloat) -> some View {
+    private func canvasZStack(halfOverflow: CGSize) -> some View {
         // Pan callbacks: non-nil only when zoomed. Closures close over the
         // current halfOverflow bounds from the enclosing GeometryReader.
-        let panChanged: ((CGSize) -> Void)? = userZoom > 1.0 ? { translation in
-            let newX = (gestureBasePan.width + translation.width)
-                .clamped(to: -halfOverflowX...halfOverflowX)
-            let newY = (gestureBasePan.height + translation.height)
-                .clamped(to: -halfOverflowY...halfOverflowY)
-            zoomPanOffset = CGSize(width: newX, height: newY)
+        let panChanged: ((CGSize) -> Void)? = zoom.isZoomed ? { translation in
+            zoom.panChanged(translation: translation, halfOverflow: halfOverflow)
         } : nil
-        let panEnded: (() -> Void)? = userZoom > 1.0 ? {
-            gestureBasePan = zoomPanOffset
+        let panEnded: (() -> Void)? = zoom.isZoomed ? {
+            zoom.panEnded()
         } : nil
 
         ZStack {
@@ -214,14 +190,14 @@ struct WritingScreen: View {
             case .singlePage:
                 SinglePagesView(
                     pages: pages,
-                    paper: PaperPreset.letter,
+                    paper: paper,
                     store: store,
                     currentPageIndex: $currentPageIndex,
-                    turningForward: $turningForward,
-                    userZoom: userZoom,
-                    zoomPanOffset: zoomPanOffset,
+                    userZoom: zoom.userZoom,
+                    zoomPanOffset: zoom.panOffset,
                     fingerPanChanged: panChanged,
-                    fingerPanEnded: panEnded
+                    fingerPanEnded: panEnded,
+                    onFingerDoubleTap: resetZoom
                 )
             case .continuous:
                 // Continuous zoom (F-053): no overlay canvas. When zoomed we
@@ -232,21 +208,32 @@ struct WritingScreen: View {
                 // second, independently-savable drawing for the page.
                 ContinuousPagesView(
                     pages: pages,
-                    paper: PaperPreset.letter,
+                    paper: paper,
                     store: store,
                     currentPageIndex: $currentPageIndex,
                     scrollTarget: scrollTarget,
                     onScrollTargetConsumed: { scrollTarget = nil },
                     restorePageIndex: currentPageIndex,
-                    isZoomed: userZoom > 1.0,
+                    isZoomed: zoom.isZoomed,
                     fingerPanChanged: panChanged,
-                    fingerPanEnded: panEnded
+                    fingerPanEnded: panEnded,
+                    onFingerDoubleTap: resetZoom
                 )
                 // userZoom on top of the per-page fitScale already applied
                 // inside ContinuousPagesView; identity when not zoomed.
-                .scaleEffect(userZoom)
-                .offset(zoomPanOffset)
+                .scaleEffect(zoom.userZoom)
+                .offset(zoom.panOffset)
             }
+        }
+    }
+
+    // MARK: - Zoom reset (F-053)
+
+    /// Shared by the finger double-tap and U-113 ZoomResetButton.
+    private func resetZoom() {
+        guard zoom.isZoomed else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            zoom.reset(flashHUD: true)
         }
     }
 
@@ -269,8 +256,9 @@ struct WritingScreen: View {
 
         switch settings.paginationStyle {
         case .singlePage:
-            turningForward = true
-            withAnimation(.easeInOut(duration: 0.18)) {
+            // Carousel: animating the index slides the new page in; the
+            // direction falls out of the offset math.
+            withAnimation(.easeInOut(duration: 0.25)) {
                 currentPageIndex = newIndex
             }
         case .continuous:
@@ -296,9 +284,9 @@ struct WritingScreen: View {
 
         switch settings.paginationStyle {
         case .singlePage:
-            // Slide toward the target page then swap content.
-            turningForward = false
-            withAnimation(.easeInOut(duration: 0.18)) {
+            // Carousel: removing the page from the ForEach and animating the
+            // index slides the neighbour into place.
+            withAnimation(.easeInOut(duration: 0.25)) {
                 pages = newPages
                 currentPageIndex = safeIndex
             }
@@ -325,15 +313,6 @@ struct WritingScreen: View {
         store.resetDocument(doc)
         pages = store.pages(of: doc)
         currentPageIndex = 0
-    }
-}
-
-// MARK: - Comparable clamped helper
-
-private extension Comparable {
-    /// Returns the value clamped to the closed range [lo, hi].
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
     }
 }
 
