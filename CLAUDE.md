@@ -10,8 +10,75 @@ document is an ordered sequence of pages. Each page is a fixed sheet the
 user first composes — background color, line style, and photos in movable
 frames — then locks with a one-way "generate" step, after which it can be
 written on by hand. The user fills a page and turns to the next, like real
-letter paper. Each page is one bounded sheet of fixed size — it can be zoomed and follows device rotation, but it is never an infinite or pannable canvas. xmate
-is digital stationery — not a whiteboard, not an Apple Notes clone.
+letter paper. Each page is one bounded sheet of fixed logical size and
+fixed aspect ratio. It can be zoomed but is never an infinite or pannable
+canvas. xmate is digital stationery — not a whiteboard, not an Apple Notes
+clone.
+
+A document is written on a **paper** — a sheet with fixed logical
+dimensions in points. The paper's dimensions determine everything
+mechanical about how the document is rendered and navigated:
+orientation lock, pagination scroll direction, fit-to-screen scale.
+
+xmate ships **Paper Presets** — named paper sizes the user picks from
+when creating a new document:
+
+- **Letter** — portrait, 1 : √2 (A4 portrait). The v1 default and
+  the primary stationery.
+- **Postcard** — landscape, 3 : 2 (4 × 6 inch). Same data model as
+  Letter; only the paper dimensions differ.
+
+Future presets (e.g. note, A5, greeting card) are added as new
+entries in one preset catalogue — no other code branches on which
+preset a document uses; all behaviour is derived from the paper's
+dimensions. Code-level distinctions between letter and postcard are
+deliberately absent: the only distinction is the values of
+`paper.width` and `paper.height`.
+
+Logical page sizes never change with device. Each iPad scales the
+paper uniformly to fit; a line written on iPad mini occupies the same
+relative space on iPad Pro 13". The app does not reflow content for
+device size or orientation — handwriting layout is preserved verbatim
+across all iPads.
+
+Device orientation does not rotate the in-content UI. When the paper
+is portrait, the Content Screen is locked to portrait; when the
+paper is landscape, it is locked to landscape. If the user holds the
+iPad the wrong way for the current paper, they are expected to
+rotate the device — the app does not adapt to the user's grip.
+Multi-orientation flexibility is deferred to v5.
+
+The Content Screen offers two equal **Pagination Styles**, a global user
+preference applied immediately:
+
+- **Single Page** — one full page fills the screen at a time; finger
+  swipes flip discretely between pages. Direction is derived from the
+  paper's orientation (portrait paper → vertical; landscape paper →
+  horizontal).
+- **Continuous** — pages stack and scroll continuously in the same
+  direction. In Writing Mode the scroll snaps to the nearest page when
+  it stops, so the writing surface is always a single steady page; in
+  Reading Mode the scroll is free, and two adjacent pages can be partly
+  visible at once.
+
+Pagination Style is one axis of the Content Screen; the other is **Mode**
+— Reading Mode vs Writing Mode. The two share the same layout; only the
+toolset and Pencil behaviour differ. (For consistency: the noun "Mode"
+in this codebase refers to Reading vs Writing only; never use "mode" for
+Pagination Style.)
+
+The app has two top-level full-screen surfaces that the user explicitly
+switches between:
+
+- **Social Screen** — the inbox / feed / pen-pal layer. v1 ships a
+  structural shell only; concrete layout lands in v3+.
+- **Content Screen** — focuses on one letter or one postcard. Has
+  Reading Mode and Writing Mode that share the same layout; only the
+  toolset changes between them. The current `WritingScreen` is the
+  Writing-Mode variant of this screen.
+
+The two screens are mutually exclusive and switched via an explicit
+top-bar control — never a sliding sidebar over the writing surface.
 
 Two products in one: the stationery authoring experience above, plus a
 social layer where users share their documents with pen pals. The social
@@ -20,7 +87,7 @@ built on.
 
 ## Tech Stack
 
-- Platform: iPadOS, latest two major versions supported.
+- Platform: iPadOS 18.0+. iOS 18 is the minimum deployment target.
 - Language: Swift; SwiftUI for UI, UIKit where SwiftUI gaps exist.
 - Drawing: PencilKit (Apple's official handwriting framework).
 - Local storage: Core Data, stored in `Library/Application Support/` (app-private, not exposed to the Files app).
@@ -94,7 +161,15 @@ See `docs/requirements/_template.md` and `docs/requirements/F-001-handwriting-ca
 
 When starting a new conversation, the user will typically say
 "Continue xmate. Read CLAUDE.md and <relevant doc>." Begin by reading
-those files. End each working session by writing decisions and updates back
-into the relevant markdown files — do not leave conclusions only in chat.
-When committing changes that involve a design decision, write the WHY into
+those files. Always also read `docs/requirements/README.md` — it is the
+feature inventory and status register; reading it keeps the feature
+catalog current without being explicitly asked.
+
+End each working session by writing decisions and updates back into the
+relevant markdown files — do not leave conclusions only in chat. When
+committing changes that involve a design decision, write the WHY into
 the commit message.
+
+After completing a coding increment, always remind the user to test on
+the primary dev device (iPad 8th generation + Apple Pencil 1st generation)
+before considering the increment done.

@@ -19,15 +19,10 @@ When user touches U-023 Canvas with a finger:
 
 ## Implementation Status
 
-The app currently launches straight into a full-screen PKCanvasView hosted
-by C-002 PencilKitBridge — no note list, no editor chrome, no navigation.
-The system PKToolPicker is attached as a temporary tool UI (it covers
-F-002..F-007). Strokes auto-save and reload across launches through
-C-001 NoteStore; see F-011's Implementation Status.
-
-Still ahead: the canvas is not yet hosted inside the multi-page writing
-mode of roadmap stage v1 — U-101 WritingScreen and page turning (F-051)
-are not built. F-001's core behaviour — drawing strokes on a page — does
-not change as that structure is added. Pencil-only input is firm: from v1
-the finger is reserved for navigation and never draws, so there is no
-finger-drawing setting.
+The canvas is hosted inside U-101 WritingScreen (roadmap stage v1).
+C-002 PencilKitBridge wraps PKCanvasView with `drawingPolicy = .pencilOnly`
+— finger touches never draw; they are handled by UISwipeGestureRecognizers
+for page turning (F-051). The system PKToolPicker remains the tool UI,
+covering F-002..F-007. Strokes persist and reload across launches via
+C-001 NoteStore (Core Data). Drawing is flushed in `dismantleUIView`
+before the PKCanvasView is torn down on a page turn.

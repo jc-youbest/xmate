@@ -22,24 +22,58 @@ A document becomes truly multi-page. The user turns pages with a vertical
 paging swipe of the finger, adds and deletes pages, and deletes the whole
 document. Only the Apple Pencil draws — the finger is reserved for
 navigation. A thin top bar carries the page indicator, an add-page button,
-and an overflow menu for destructive actions; the system tool picker stays
-at the bottom.
+a back-to-social button, and an overflow menu for destructive actions; the
+system tool picker stays at the bottom.
 
-The page follows device rotation and supports whole-page zoom. Handwriting —
-and, in later stages, any stationery background — scales together, so a
-filled line stays one line across orientations and zoom levels. The page is
-still one bounded sheet, never an infinite canvas.
+v1 splits the app into two top-level full-screen surfaces:
+
+- **Content Screen** — focuses on one letter or one postcard. v1 ships
+  the writing variant; the read-only browse variant shares its layout and
+  arrives later.
+- **Social Screen** — placeholder shell for inbox / feed / pen-pal
+  surfaces. v1 ships a structural stub with explicit navigation to and
+  from the Content Screen; its concrete contents are designed in v3+.
+
+A document is written on a **paper** — a sheet with fixed logical
+dimensions. xmate ships two **Paper Presets** in v1: **Letter** (portrait
+A4, 1 : √2) and **Postcard** (landscape, 3 : 2, 4 × 6 inch). Same data
+model, only the dimensions differ. Future presets (e.g. notes, A5,
+greeting card) are added as new entries in one catalogue — no code
+branches on a preset's name; orientation, scroll direction and aspect
+all derive from the paper's `width` and `height`.
+
+Pages have fixed logical dimensions; every iPad uniformly scales the page
+to fit. Handwriting position is preserved verbatim — a line on iPad mini
+and the same line on iPad Pro 13" occupy the same relative space. Content
+never reflows for screen size.
+
+Device orientation does not rotate the in-content UI. A document written
+on portrait paper locks the Content Screen to portrait; landscape paper
+locks it to landscape. The user is expected to orient the device to the
+paper — the app does not adapt to grip. Multi-orientation flexibility
+across the app is deferred to v5.
+
+The Content Screen offers two equal **Pagination Styles** as a global
+user preference applied immediately (F-056):
+
+- **Single Page** — discrete swipe between full-screen pages,
+  direction derived from the paper's orientation (vertical for
+  portrait paper, horizontal for landscape paper). Default for new
+  users; this is what stage 2 ships.
+- **Continuous** — pages stack and scroll continuously. Writing Mode
+  snaps to the nearest page after scrolling stops; Reading Mode (a
+  later increment) scrolls freely with two pages partly visible at
+  once. Stage 3 ships Continuous for letter content.
+
+The Content Screen supports whole-page zoom (1× to 3×). Zoom scales
+handwriting and, in later stages, the stationery background as one unit.
+The page remains one bounded sheet — never an infinite canvas, never
+free-panning beyond the page edge.
 
 The user can add media attachments while writing. The add-image experience
 matches Apple Notes. These writing-mode attachments — distinct from the
-photos placed in stationery mode (v2) — can be moved, scaled, and deleted at
-any time, and rotate together with the page.
-
-A left sidebar appears, reserved for later features (letter history,
-received letters, sent letters, and so on). For now it is a structural
-placeholder; the requirement is that the writing-page zoom and layout
-integrate cleanly with it — the page rescales to the area the sidebar leaves
-free.
+photos placed in stationery mode (v2) — can be moved, scaled, and deleted
+at any time. They scale together with the page under zoom.
 
 ## v2 — Personalized stationery template editor
 
@@ -81,6 +115,15 @@ Stationery and handwriting adapt across iPad screen sizes — iPad 8th
 generation and newer real devices; testing expands to multiple sizes.
 Cross-device then needs no dedicated work: one account on different-sized
 iPads displays correctly.
+
+This is also the stage that revisits device-orientation flexibility. v1
+locks each document to its paper's orientation (portrait paper →
+portrait UI; landscape paper → landscape UI); v5 evaluates whether to
+relax that lock — for example, by allowing the Social Screen to
+support both orientations on iPads with attached keyboards, or by
+introducing a "wide letter" paper preset for landscape-only iPad
+setups. Any relaxation must preserve the v1 guarantee that handwriting
+layout never reflows.
 
 ## v6 — Networked content moderation
 

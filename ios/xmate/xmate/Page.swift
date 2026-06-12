@@ -12,5 +12,10 @@ public class Page: NSManagedObject {
 
     @NSManaged public var id: UUID?
     @NSManaged public var drawingData: Data?
+    /// Monotonic save counter used as an optimistic-concurrency stamp by
+    /// C-001 NoteStore / C-030 DrawingSessionManager. The store only accepts a
+    /// write whose incoming version is strictly greater than the stored one,
+    /// so a stale (inactive) canvas can never overwrite newer handwriting.
+    @NSManaged public var version: Int64
     @NSManaged public var document: Document?
 }

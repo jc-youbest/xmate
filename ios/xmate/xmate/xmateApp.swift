@@ -13,6 +13,7 @@ struct xmateApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(NoteStore.shared)
+                .environmentObject(SettingsStore.shared)
         }
     }
 }
