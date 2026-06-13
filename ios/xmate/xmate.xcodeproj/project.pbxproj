@@ -29,9 +29,26 @@
 		E5936B142FB49F8700496AF1 /* xmateUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = xmateUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		E5936C002FB49F8500496AF1 /* Exceptions for "xmate" folder in "xmate" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/README.md,
+				Editor/README.md,
+				Library/README.md,
+				Shared/README.md,
+				Storage/README.md,
+			);
+			target = E5936AFC2FB49F8500496AF1 /* xmate */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E5936AFF2FB49F8500496AF1 /* xmate */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E5936C002FB49F8500496AF1 /* Exceptions for "xmate" folder in "xmate" target */,
+			);
 			path = xmate;
 			sourceTree = "<group>";
 		};

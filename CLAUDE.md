@@ -122,7 +122,7 @@ respective catalog before being referenced from a feature.
 ### Files & Code
 
 - All documents and code: English only. Conversations may be in any language.
-- Markdown filenames: kebab-case (`F-002-pen-tools.md`).
+- Markdown filenames: kebab-case.
 - Branch naming: `feature/F-002-pen-tools`, `fix/F-002-...`.
 - Commit messages: `feat(F-002): add pen tool picker`, `docs(C-001): introduce NoteStore`.
   When a commit changes UI / components / backend / features, the message
@@ -133,37 +133,53 @@ respective catalog before being referenced from a feature.
   `// U-023 Canvas` or `// C-002 PencilKitBridge`. This makes catalog IDs
   greppable from inside the code.
 
-### Feature File Format
+## Modules
 
-Feature files are flow-centric. Each feature is described as a sequence of
-`When <trigger>: <system actions>` blocks. Every UI / component / backend
-reference uses the exact `ID Name` form, matching its catalog. Performance
-or compatibility constraints go inline next to the relevant step, e.g.
-`(latency < 1 frame)`. No Acceptance Criteria, Non-goals, Open Questions,
-Dependencies, or Status sections.
+The iOS app is split into modules, each a code folder under
+`ios/xmate/xmate/` containing its own `README.md` (responsibilities, key
+files, non-responsibilities, next step, AI notes):
 
-See `docs/requirements/_template.md` and `docs/requirements/F-001-handwriting-canvas.md`.
+- **App/** — entry layer: `@main`, composition root (U-001 RootView),
+  global settings. No module imports from it. Document identity is
+  resolved HERE (currently a hard-coded dev document name) and injected
+  into the editor — the editor never chooses its own document.
+- **Editor/** — Content Screen: pagination, zoom, PencilKit writing
+  stack. Only edits the injected document.
+- **Storage/** — Core Data store, entities, drawing persistence. Pure
+  load/save; no UI knowledge.
+- **Library/** — placeholder until v3 (personal document manager).
+- **Shared/** — truly cross-module small types only (no junk drawer).
+- Social — no code folder yet; created with its first file (v3+).
+
+Dependency arrows point one way: App → Editor → Storage; everything may
+use Shared; nothing imports App.
 
 ## Where Things Live
 
-- `docs/roadmap.md` — the development path: stages v0..v6.
-- `docs/requirements/` — feature index and per-feature flow specs (F-XXX).
-- `docs/ui/README.md` — UI containment tree (U-XXX).
-- `docs/components/README.md` — iOS component catalog (C-XXX).
-- `docs/backend/README.md` — backend module catalog (S-XXX).
-- `docs/glossary.md` — shared terminology.
-- `ios/` — Xcode project.
-- `backend/` — backend code (created later).
-- `assets/` — design and reference assets.
-- `scripts/` — utility scripts.
+- `roadmap.md` — the development path: stages v0..v6 (global; never
+  per-module).
+- `docs/architecture.md` — module layering, document injection flow,
+  paper model, PencilKit canvas invariants, Xcode project notes.
+- `docs/product.md` — product vision, core model, surfaces/modes,
+  terminology.
+- `docs/ui.md` — UI principles + built UI inventory (global U-XXX
+  registry).
+- `docs/backlog.md` — future features, one line each (global F-XXX
+  registry); details are designed when work starts, not before.
+- `ios/xmate/xmate/<Module>/README.md` — per-module self-description;
+  the primary doc for a module-focused session.
+- `ios/` — Xcode project. `backend/` — backend code (created later).
+- `assets/` — design and reference assets. `scripts/` — utility scripts.
 
 ## Working Style
 
-When starting a new conversation, the user will typically say
-"Continue xmate. Read CLAUDE.md and <relevant doc>." Begin by reading
-those files. Always also read `docs/requirements/README.md` — it is the
-feature inventory and status register; reading it keeps the feature
-catalog current without being explicitly asked.
+A working session normally targets ONE module. The user will typically
+say "Continue xmate, module <name>. Read CLAUDE.md and
+`ios/xmate/xmate/<Name>/README.md`." Begin by reading those; read other
+modules' READMEs only when the work crosses a boundary. When allocating
+a new F/U/C ID or changing cross-module structure, consult `docs/ui.md`
+(U-XXX) and `docs/backlog.md` (F-XXX) — IDs are global and monotonic,
+so always check before allocating.
 
 End each working session by writing decisions and updates back into the
 relevant markdown files — do not leave conclusions only in chat. When
