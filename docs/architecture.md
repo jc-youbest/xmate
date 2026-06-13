@@ -103,6 +103,49 @@ them casually.
    rejected `.scrollPosition(id:)` bidirectional binding; the one-way
    `scrollTarget` UUID signal is used instead).
 
+## Flow design notes
+
+How each implemented flow ended up as it is — the settled decision and
+the alternatives tried and rejected, plus the constraint that forced the
+choice. All flows, whether internal to one module or spanning several,
+are recorded here in one place: telling them apart up front is hard and
+module boundaries move, so a single home avoids shuffling notes between
+files. Record decisions, not plans.
+
+### Single Page paging
+
+Persistent-offset carousel (SinglePagesView). A page turn animates
+`currentPageIndex`; every page's offset shifts by one stride, so no
+canvas is created or destroyed (principle 3) — the flip is flicker-free
+and the departing page needs no emergency flush (it stays alive;
+DrawingSessionManager hands the active-editor role over explicitly).
+Swipe axis derives from paper orientation (portrait → vertical,
+landscape → horizontal). *Rejected:* rebuilding the page view per turn
+(flicker).
+
+### Continuous paging
+
+Pages stack in a plain `VStack`, never `LazyVStack`: the PKToolPicker
+needs window-attached canvases (principle 3), and lazy loading would
+detach off-screen pages and break tool anchoring. Writing Mode snaps to
+the nearest page when scrolling stops (the writing surface is always one
+steady page); Reading Mode (later) scrolls freely with two adjacent
+pages partly visible. Programmatic moves use a one-way `scrollTarget`
+UUID signal. *Rejected:* `LazyVStack` (tool picker breaks);
+`.scrollPosition(id:)` two-way binding (snap loop — principle 6).
+
+### Zoom
+
+Whole-page zoom 1×–3× (PageZoomModel owns state and gesture math),
+capped at 300%. Handwriting and (later) the stationery background scale
+as one unit; the page stays one bounded sheet — never infinite, never
+free-panning past its edge. The zoomed page is clipped to the canvas
+area so it never paints over the top bar. Reset to 100% by finger
+double-tap or the top-bar zoom-reset button (live percentage while
+zoomed); a transient centered ZoomHUD reports the percentage and
+auto-fades. *Rejected:* free-panning / infinite canvas — xmate is
+bounded stationery, not a whiteboard.
+
 ## Tech stack
 
 - iPadOS 18.0+ minimum; Swift, SwiftUI (UIKit where SwiftUI gaps exist);

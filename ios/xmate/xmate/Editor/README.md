@@ -35,10 +35,11 @@
 
 ## Notes for AI changes
 
-- Respect the canvas invariants in `docs/architecture.md` (one active
-  canvas per Page; all canvases stay alive; convergent tool push;
-  pencilOnly + finger-only recognizers attached to the canvas itself).
-  They were earned through device debugging — do not regress casually.
+- Respect the canvas invariants and the Flow design notes in
+  `docs/architecture.md` (one authoritative canvas per Page; all
+  canvases stay alive; convergent tool push; pencilOnly + finger-only
+  recognizers attached to the canvas itself). They were earned through
+  device debugging — do not regress casually.
 - Never branch on a paper's NAME; derive behavior from
   `paper.width/height` only.
 - Avoid bidirectional scroll bindings (`.scrollPosition(id:)` causes a

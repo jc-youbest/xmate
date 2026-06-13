@@ -21,16 +21,26 @@ principles: **`docs/product.md`**.
   terminology, UI principles.
 - `docs/architecture.md` — module layering, dependency rules, document
   injection flow, paper model, PencilKit canvas invariants, Xcode
-  project conventions, tech stack, hardware constraints.
+  project conventions, tech stack, hardware constraints, **and all flow
+  design notes** (how a flow was implemented + the alternatives tried
+  and rejected — paging, zoom, etc.).
 - `roadmap.md` — staged development path (v0..v6) and the Backlog
   (future-feature pool; the F-XXX registry).
 - `ios/xmate/xmate/<Module>/README.md` — per-module self-description
-  (responsibilities, key files, non-responsibilities, next step, AI
-  notes). The primary doc for a module-focused session.
+  ONLY: responsibilities, key files, non-responsibilities, next step, AI
+  notes. The primary doc for a module-focused session. Module READMEs do
+  NOT hold flow/mechanism design — those go in `docs/architecture.md`.
 - `README.md` — human-facing repo entry point.
 
 Do not restate facts from these files here or in each other — link
 instead. Duplication is what drifts out of sync.
+
+**Rule — flow design has one home.** Every flow's final design (the
+mechanism + the alternatives tried and rejected) is recorded in
+`docs/architecture.md` (Flow design notes), whether the flow is internal
+to one module or spans several. Telling those apart up front is hard and
+module boundaries shift, so they share one home: recording a flow =
+editing one file. Module READMEs only point to it.
 
 ## Module map (authoritative layering in `docs/architecture.md`)
 
