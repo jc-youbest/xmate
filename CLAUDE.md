@@ -26,6 +26,12 @@ principles: **`docs/product.md`**.
   and rejected — paging, zoom, etc.).
 - `roadmap.md` — staged development path (v0..v6) and the Backlog
   (future-feature pool; the F-XXX registry).
+- `docs/lifecycle.md` — how the iOS/SwiftUI/UIKit/PencilKit lifecycle and
+  callbacks fire and in what order across the key scenarios (launch, page
+  turn, mode switch, zoom, foreground), plus the running **problem log**
+  of major lifecycle/timing issues and their status. The home for
+  hard-won "which callback, in what order, in what app state" knowledge —
+  record every major timing problem here.
 - `ios/xmate/xmate/<Module>/README.md` — per-module self-description
   ONLY: responsibilities, key files, non-responsibilities, next step, AI
   notes. The primary doc for a module-focused session. Module READMEs do
