@@ -1,11 +1,11 @@
-// U-102 WritingTopBar
+// WritingTopBar
 //
 // Thin top bar for writing mode (F-051 / F-053 / F-056). Contains:
-//   U-093 PageIndicator       — current position, e.g. "1 / 3"
-//   U-113 ZoomResetButton     — live zoom percentage while zoomed; tap → 100%
-//   U-095 AddPageButton       — appends a new blank page
-//   U-103 WritingOverflowMenu — modal: pagination style, delete page, delete document
-//     └ U-111 PaginationStylePicker — Picker toggling Single Page ↔ Continuous (F-056)
+//   PageIndicator       — current position, e.g. "1 / 3"
+//   ZoomResetButton     — live zoom percentage while zoomed; tap → 100%
+//   AddPageButton       — appends a new blank page
+//   WritingOverflowMenu — modal: pagination style, delete page, delete document
+//     └ PaginationStylePicker — Picker toggling Single Page ↔ Continuous (F-056)
 //
 // Layout: indicator on the left, buttons on the right.
 // Background: .bar material so it reads clearly against any page background.
@@ -17,13 +17,13 @@ struct WritingTopBar: View {
     let currentIndex: Int
     let pageCount: Int
 
-    /// Global pagination style — reflected and updated by U-111 PaginationStylePicker.
+    /// Global pagination style — reflected and updated by PaginationStylePicker.
     @Binding var paginationStyle: PaginationStyle
 
     /// Current zoom percentage while zoomed (e.g. 153), nil at fit (F-053).
-    /// Non-nil shows U-113 ZoomResetButton.
+    /// Non-nil shows ZoomResetButton.
     let zoomPercent: Int?
-    /// Tap on U-113 ZoomResetButton — restores 100% (fit).
+    /// Tap on ZoomResetButton — restores 100% (fit).
     let onResetZoom: () -> Void
 
     let onAddPage: () -> Void
@@ -33,7 +33,7 @@ struct WritingTopBar: View {
     var body: some View {
         HStack(spacing: 0) {
 
-            // U-093 PageIndicator
+            // PageIndicator
             Text("\(currentIndex + 1) / \(pageCount)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -42,7 +42,7 @@ struct WritingTopBar: View {
 
             Spacer()
 
-            // U-113 ZoomResetButton — visible only while zoomed (F-053).
+            // ZoomResetButton — visible only while zoomed (F-053).
             // Shows the live percentage; tapping restores 100% (fit).
             if let zoomPercent {
                 Button(action: onResetZoom) {
@@ -58,7 +58,7 @@ struct WritingTopBar: View {
                 .padding(.trailing, 8)
             }
 
-            // U-095 AddPageButton
+            // AddPageButton
             Button(action: onAddPage) {
                 Image(systemName: "plus")
                     .imageScale(.large)
@@ -67,10 +67,10 @@ struct WritingTopBar: View {
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
 
-            // U-103 WritingOverflowMenu
+            // WritingOverflowMenu
             Menu {
 
-                // U-111 PaginationStylePicker — toggle between Single Page and Continuous.
+                // PaginationStylePicker — toggle between Single Page and Continuous.
                 // A SwiftUI Picker inside a Menu renders as an inline radio group.
                 Picker("Pagination", selection: $paginationStyle) {
                     Label("Single Page", systemImage: "doc")

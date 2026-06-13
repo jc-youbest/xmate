@@ -17,7 +17,7 @@
 
 ## Next step (current stage)
 
-- Nothing. Do not build ahead of v3; designs land in `docs/backlog.md`
+- Nothing. Do not build ahead of v3; designs land in the Backlog of `roadmap.md`
   first.
 
 ## Notes for AI changes

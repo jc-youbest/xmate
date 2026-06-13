@@ -1,16 +1,16 @@
-// U-101 WritingScreen
+// WritingScreen
 //
 // The writing-mode screen for roadmap stage v1 (F-051) — the writing
 // variant of the Content Screen.
 //
 // Layout:
-//   U-102 WritingTopBar   — thin top bar (page indicator, zoom reset, add,
+//   WritingTopBar   — thin top bar (page indicator, zoom reset, add,
 //                           overflow menu). Always visible — the canvas area
 //                           below is clipped, so a zoomed page can never
 //                           paint over the bar.
 //   Canvas area           — routed to SinglePagesView or ContinuousPagesView
-//                           based on C-028 SettingsStore.paginationStyle
-//                           (F-056), with U-112 ZoomHUD overlaid centered.
+//                           based on SettingsStore.paginationStyle
+//                           (F-056), with ZoomHUD overlaid centered.
 //
 // Pagination Style routing (F-056):
 //   .singlePage  → SinglePagesView: persistent offset carousel — all page
@@ -30,31 +30,31 @@
 // .scrollPosition(id:) is deliberately avoided — its bidirectional binding
 // silently snaps to the binding value and creates a perpetual snap loop.
 //
-// Zoom (F-053) — state and math live in C-031 PageZoomModel:
+// Zoom (F-053) — state and math live in PageZoomModel:
 //   • userZoom 1.0 (fit) … 3.0 (300% cap). Pinch via MagnificationGesture
 //     attached as .simultaneousGesture.
-//   • U-112 ZoomHUD: centered translucent percentage readout, visible while
+//   • ZoomHUD: centered translucent percentage readout, visible while
 //     pinching, fades 1 s after the fingers lift.
-//   • Reset to 100%: finger double-tap on the page, or U-113 ZoomResetButton
+//   • Reset to 100%: finger double-tap on the page, or ZoomResetButton
 //     in the top bar (shows the live percentage while zoomed).
 //   • Panning: a UIPanGestureRecognizer with allowedTouchTypes = [.direct]
 //     attached directly to PKCanvasView inside PencilKitBridge — the only
 //     reliable way to accept finger panning while writing with Pencil
-//     (see C-002 header for why covering views fail).
+//     (see header for why covering views fail).
 //   • While zoomed, Single Page suspends swipe pagination (nil callbacks)
 //     and Continuous freezes its ScrollView; in both styles the SAME
 //     current-page canvas keeps editing and owns the finger pan, upholding
-//     the one-authoritative-canvas-per-Page invariant (C-030).
+//     the one-authoritative-canvas-per-Page invariant.
 //   • Zoom resets (without HUD flash) on page change so every page opens
 //     at fit.
 //
 // Document identity is INJECTED — this screen never decides which
-// document it edits. U-001 AppRoot (RootView, App/) resolves the document
+// document it edits. AppRoot (RootView, App/) resolves the document
 // (v1: hard-coded default) and passes it in; future sources (inbox,
 // drafts, new creation) resolve a Document the same way.
 //
 // Delete document (v1 stub): resets to a single blank page. F-011 will
-// replace this with navigation to U-002 NoteListScreen in v3.
+// replace this with navigation to NoteListScreen in v3.
 //
 // Paper: hard-coded to PaperPreset.letter for now. Per-document paper
 // arrives with a Core Data migration in a later increment; nothing in the
@@ -68,7 +68,7 @@ struct WritingScreen: View {
     @EnvironmentObject var settings: SettingsStore
 
     /// The document being edited — injected by the composition root
-    /// (U-001 AppRoot). See file header.
+    /// (AppRoot). See file header.
     let document: Document
 
     /// Stage limitation: per-document paper lands with the Core Data
@@ -88,7 +88,7 @@ struct WritingScreen: View {
     @State private var showDeletePageAlert: Bool = false
     @State private var showDeleteDocumentAlert: Bool = false
 
-    /// Zoom state + gesture math (F-053). C-031.
+    /// Zoom state + gesture math (F-053).
     @StateObject private var zoom = PageZoomModel()
 
     // MARK: - Body
@@ -96,7 +96,7 @@ struct WritingScreen: View {
     var body: some View {
         VStack(spacing: 0) {
 
-            // U-102 WritingTopBar — only shown once pages are loaded.
+            // WritingTopBar — only shown once pages are loaded.
             if !pages.isEmpty {
                 WritingTopBar(
                     currentIndex: currentPageIndex,
@@ -161,7 +161,7 @@ struct WritingScreen: View {
                         .onChanged { zoom.pinchChanged($0) }
                         .onEnded { zoom.pinchEnded($0) }
                 )
-                // U-112 ZoomHUD — centered, transient, touch-transparent.
+                // ZoomHUD — centered, transient, touch-transparent.
                 .overlay {
                     if zoom.hudVisible {
                         ZoomHUD(percent: zoom.percent)
@@ -169,7 +169,7 @@ struct WritingScreen: View {
                 }
         }
         // The zoomed page overflows its slot; clip so it never paints over
-        // U-102 WritingTopBar (F-053).
+        // WritingTopBar (F-053).
         .clipped()
         .ignoresSafeArea(edges: .bottom)
         // Reset zoom and pan on every page change so each page opens at fit.
@@ -237,7 +237,7 @@ struct WritingScreen: View {
 
     // MARK: - Zoom reset (F-053)
 
-    /// Shared by the finger double-tap and U-113 ZoomResetButton.
+    /// Shared by the finger double-tap and ZoomResetButton.
     private func resetZoom() {
         guard zoom.isZoomed else { return }
         withAnimation(.easeOut(duration: 0.2)) {
@@ -313,7 +313,7 @@ struct WritingScreen: View {
 
     private func handleDeleteDocument() {
         // v1 stub: clear all pages and start fresh with one blank page.
-        // F-011 will replace this with navigation to U-002 NoteListScreen (v3).
+        // F-011 will replace this with navigation to NoteListScreen (v3).
         store.resetDocument(document)
         pages = store.pages(of: document)
         currentPageIndex = 0

@@ -17,8 +17,8 @@
 
 ## Key files
 
-- `NoteStore.swift` (C-001), `Document.swift`, `Page.swift`,
-  `StrokeSerializer.swift` (C-003), `xmate.xcdatamodeld`
+- `NoteStore.swift`, `Document.swift`, `Page.swift`,
+  `StrokeSerializer.swift`, `xmate.xcdatamodeld`
 
 ## Not responsible for
 

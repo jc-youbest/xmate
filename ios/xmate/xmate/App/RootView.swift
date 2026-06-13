@@ -1,11 +1,11 @@
-// U-001 AppRoot — composition root
+// AppRoot — composition root
 //
 // The app's global entry view. It lives in App/ — the entry layer at the
 // top of the iOS source tree, deliberately independent of every module
 // folder (Editor/, Storage/, and the future Library/, Social/).
 //
 // Its single architectural job: decide WHICH document the editor opens
-// and inject it. The editor (U-101 WritingScreen) never chooses its own
+// and inject it. The editor (WritingScreen) never chooses its own
 // document — document identity always flows in from outside.
 //
 // v1: hard-coded dev document name (load-or-create on first launch).

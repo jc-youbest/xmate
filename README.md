@@ -12,9 +12,8 @@ remaining compatible with Apple Pencil 1st generation.
 ## Repository Layout
 
 - `CLAUDE.md` — context for AI-assisted development sessions.
-- `roadmap.md` — development path, stages v0..v6.
-- `docs/` — exactly four files: `architecture.md`, `product.md`,
-  `ui.md`, `backlog.md`.
+- `roadmap.md` — development path (stages v0..v6) and the Backlog.
+- `docs/` — two files: `product.md` and `architecture.md`.
 - `ios/` — Xcode project; each module folder under
   `ios/xmate/xmate/` carries its own `README.md`.
 - `backend/` — custom backend code (created later).
@@ -24,11 +23,12 @@ remaining compatible with Apple Pencil 1st generation.
 ## Documentation Entry Points
 
 - [`CLAUDE.md`](CLAUDE.md) — start here for any development session.
-- [`roadmap.md`](roadmap.md) — where the project is and what's next.
-- [`docs/architecture.md`](docs/architecture.md) — module layering and invariants.
-- [`docs/product.md`](docs/product.md) — product vision and terminology.
-- [`docs/ui.md`](docs/ui.md) — UI principles and built UI inventory.
-- [`docs/backlog.md`](docs/backlog.md) — future features, one line each.
+- [`roadmap.md`](roadmap.md) — where the project is, what's next, and the
+  future-feature backlog.
+- [`docs/product.md`](docs/product.md) — product vision, model,
+  terminology, and UI principles.
+- [`docs/architecture.md`](docs/architecture.md) — module layering,
+  invariants, paper model, and Xcode project conventions.
 
 ## Test Hardware
 

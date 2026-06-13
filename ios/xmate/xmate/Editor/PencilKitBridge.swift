@@ -1,4 +1,4 @@
-// C-002 PencilKitBridge
+// PencilKitBridge
 //
 // SwiftUI wrapper around XmateCanvasView (a PKCanvasView subclass).
 //
@@ -28,7 +28,7 @@
 // handles .pencil touches internally, the pan handles .direct (finger)
 // touches, and they never interfere.
 //
-// Editing identity & saving: owned by C-030 DrawingSessionManager. This bridge
+// Editing identity & saving: owned by DrawingSessionManager. This bridge
 // no longer saves directly, never decides first responder for itself, and never
 // touches the ToolPicker. In makeUIView it stamps the canvas with its pageID /
 // role; in updateUIView (deferred, once the canvas has a window) it REGISTERS

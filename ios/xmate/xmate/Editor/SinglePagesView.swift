@@ -1,4 +1,4 @@
-// U-101 WritingScreen — Single Page layout
+// WritingScreen — Single Page layout
 //
 // One full page fills the viewport at a time. Finger swipes flip discretely
 // between pages along paper.paginationAxis: up/down for portrait paper,
@@ -21,7 +21,7 @@
 //   stride = viewport extent + gap, so exactly one page is on-screen.
 //   A page turn just animates currentPageIndex → every offset shifts by one
 //   stride. No canvas is created or destroyed → zero flicker, and the
-//   departing page needs no emergency flush (it stays alive; C-030
+//   departing page needs no emergency flush (it stays alive;
 //   DrawingSessionManager hands the active-editor role over explicitly).
 //
 //   Memory: bounded stationery documents (letters, postcards), same

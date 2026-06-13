@@ -1,4 +1,4 @@
-// C-027 PageGeometry
+// PageGeometry
 //
 // The fixed-size logical-page model (F-053 Page Geometry and Zoom).
 //

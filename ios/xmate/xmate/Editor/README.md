@@ -2,7 +2,7 @@
 
 ## Responsibilities
 
-- WritingScreen (U-101): the Writing-Mode variant of the Content Screen.
+- WritingScreen: the Writing-Mode variant of the Content Screen.
 - Both Pagination Styles: SinglePagesView (persistent offset carousel,
   flips animate offsets only — zero canvas recreation) and
   ContinuousPagesView (free-scroll plain VStack — never Lazy, the
@@ -15,11 +15,11 @@
 
 ## Key files
 
-- `WritingScreen.swift` (U-101), `WritingTopBar.swift` (U-102)
+- `WritingScreen.swift`, `WritingTopBar.swift`
 - `SinglePagesView.swift`, `ContinuousPagesView.swift`
-- `PageZoom.swift` (C-031 + U-112), `PageGeometry.swift` (C-027)
-- `PencilKitBridge.swift` (C-002), `ToolPickerHost.swift` (C-029),
-  `DrawingSessionManager.swift` (C-030)
+- `PageZoom.swift`, `PageGeometry.swift`
+- `PencilKitBridge.swift`, `ToolPickerHost.swift`,
+  `DrawingSessionManager.swift`
 
 ## Not responsible for
 

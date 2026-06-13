@@ -21,10 +21,29 @@ each module's README next to its code (`ios/xmate/xmate/<Module>/README.md`).
 - **Shared** (`Shared/`) — truly cross-module small types only
   (currently `PaginationStyle`, `Comparable.clamped`). Not a junk drawer.
 
-The source folder is an Xcode filesystem-synchronized group
-(`objectVersion 77`): files added to a module folder on disk join the
-target automatically. Module READMEs are excluded from the app bundle
-via membership exceptions in the project file.
+## Xcode project
+
+| Setting | Value |
+|---|---|
+| Project name | `xmate` |
+| Bundle Identifier | `com.cwc.xmate` |
+| Deployment target | iPadOS 18.0 |
+| Device family | iPad only |
+| Interface | SwiftUI |
+| Language | Swift |
+
+Xcode wraps the project in a product-named folder, so the on-disk layout
+double-nests (`ios/xmate/xmate/`):
+
+- `ios/xmate/xmate.xcodeproj/` — the Xcode project; open this.
+- `ios/xmate/xmate/` — application source, one folder per module, each
+  carrying its own `README.md`.
+- `ios/xmate/xmateTests/` — unit tests; `xmateUITests/` — UI tests.
+
+The source folder is a filesystem-synchronized group (`objectVersion 77`):
+files added to a module folder on disk join the target automatically — no
+pbxproj edits. Module `README.md` files are excluded from the app target
+via a membership-exception set in the pbxproj so they are never bundled.
 
 ## Document input model
 

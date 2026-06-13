@@ -1,4 +1,4 @@
-// C-031 PageZoomModel
+// PageZoomModel
 //
 // Whole-page zoom state for the Content Screen (F-053), extracted from
 // WritingScreen so both Pagination Styles — and any future paper preset —
@@ -8,7 +8,7 @@
 //     capped at 3.0 (300%) per roadmap v1. The HUD shows 100%–300%.
 //   • panOffset — page shift while zoomed, clamped by the caller-supplied
 //     half-overflow bounds so the page edge never passes the viewport edge.
-//   • HUD visibility — a transient centered percentage readout (U-112).
+//   • HUD visibility — a transient centered percentage readout.
 //     Visible while pinching; hides 1.0 s after the fingers lift. Reset
 //     (double-tap / top-bar button) flashes it once so the user sees "100%".
 //
@@ -41,7 +41,7 @@ final class PageZoomModel: ObservableObject {
     /// Pan offset of the zoomed page within the viewport. .zero at fit.
     @Published private(set) var panOffset: CGSize = .zero
 
-    /// Whether the percentage HUD (U-112 ZoomHUD) is currently shown.
+    /// Whether the percentage HUD (ZoomHUD) is currently shown.
     @Published private(set) var hudVisible: Bool = false
 
     // MARK: Gesture session bases
@@ -55,7 +55,7 @@ final class PageZoomModel: ObservableObject {
     /// True when zoomed past fit — pagination is suspended, panning enabled.
     var isZoomed: Bool { userZoom > 1.0 }
 
-    /// Integer percentage for the HUD and the top-bar reset button (U-113).
+    /// Integer percentage for the HUD and the top-bar reset button.
     var percent: Int { Int((userZoom * 100).rounded()) }
 
     // MARK: - Pinch (MagnificationGesture)
@@ -140,7 +140,7 @@ final class PageZoomModel: ObservableObject {
     }
 }
 
-// MARK: - U-112 ZoomHUD
+// MARK: - ZoomHUD
 
 /// Transient centered percentage readout shown while pinch-zooming (F-053).
 /// Semi-transparent capsule, never intercepts touches. WritingScreen overlays

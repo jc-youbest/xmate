@@ -4,10 +4,10 @@
 
 - `@main` scene setup; injects app-wide stores (NoteStore, SettingsStore)
   into the environment.
-- RootView (U-001) is the composition root: it decides WHICH document is
+- RootView is the composition root: it decides WHICH document is
   opened and injects it into the editor. v1: hard-coded dev document
   name resolved via `NoteStore.loadOrCreateDocument(named:)`.
-- Global user preferences (SettingsStore / C-028, UserDefaults-backed).
+- Global user preferences (SettingsStore, UserDefaults-backed).
 - Future: top-level switch between Social Screen and Content Screen;
   entry flows from inbox / drafts / new creation that resolve a Document
   and hand it to the editor.
@@ -15,8 +15,8 @@
 ## Key files
 
 - `xmateApp.swift` — `@main`; hosts RootView
-- `RootView.swift` — U-001 composition root; document resolution
-- `SettingsStore.swift` — C-028 global preferences (PaginationStyle)
+- `RootView.swift` — composition root; document resolution
+- `SettingsStore.swift` — global preferences (PaginationStyle)
 
 ## Not responsible for
 

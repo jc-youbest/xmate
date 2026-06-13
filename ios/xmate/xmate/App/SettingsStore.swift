@@ -1,4 +1,4 @@
-// C-028 SettingsStore
+// SettingsStore
 //
 // Global app preferences persisted via UserDefaults (F-056).
 //
@@ -11,7 +11,7 @@ import Foundation
 
 // MARK: - SettingsStore
 
-/// C-028 SettingsStore — global app preferences persisted via UserDefaults.
+/// SettingsStore — global app preferences persisted via UserDefaults.
 ///
 /// All preferences are global (not per-document). The preference is
 /// applied immediately: switching Pagination Style re-renders the current

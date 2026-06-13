@@ -1,5 +1,5 @@
 // Core Data entity: Document — a multi-page letter.
-// Lifecycle and storage are managed by C-001 NoteStore.
+// Lifecycle and storage are managed by NoteStore.
 
 import Foundation
 import CoreData

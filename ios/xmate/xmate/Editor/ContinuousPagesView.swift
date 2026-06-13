@@ -1,4 +1,4 @@
-// U-101 WritingScreen — Continuous layout (F-056 stage 3)
+// WritingScreen — Continuous layout (F-056 stage 3)
 //
 // Pages stack along paper.paginationAxis inside a free-scrolling ScrollView.
 // 20 pt gaps between pages; each page has a 4 pt drop shadow. Background and
@@ -32,7 +32,7 @@
 //     scrolls via ScrollViewReader.scrollTo and calls onScrollTargetConsumed
 //     to clear the signal. No binding write-back, no snap loop.
 //
-// TOOL PICKER — stays alive via C-029 ToolPickerHost.
+// TOOL PICKER — stays alive via ToolPickerHost.
 //   • Each PencilKitBridge registers/deregisters with ToolPickerHost.
 //   • With plain VStack the only removal scenario is page deletion;
 //     ToolPickerHost re-anchors to the adjacent live canvas.

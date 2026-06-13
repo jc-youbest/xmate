@@ -1,9 +1,9 @@
-// C-029 ToolPickerHost
+// ToolPickerHost
 //
 // App-wide PKToolPicker singleton. As of the object-lifecycle rework it is a
 // THIN owner of the single picker — it no longer tracks first responder or
 // guesses who to re-anchor to. The authoritative "which canvas is editing
-// which page" decision lives entirely in C-030 DrawingSessionManager, which
+// which page" decision lives entirely in DrawingSessionManager, which
 // drives this host through `setActiveCanvas(_:)`.
 //
 // Why the split:
@@ -29,7 +29,7 @@ import PencilKit
 
 /// PKCanvasView subclass used by all PencilKitBridge instances.
 ///
-/// Carries its identity (`pageID`, `role`) so C-030 DrawingSessionManager can
+/// Carries its identity (`pageID`, `role`) so DrawingSessionManager can
 /// reason about it without a side table keyed on the UIView, and overrides the
 /// first-responder transitions to notify the session manager — the only
 /// reliable way to know which of several simultaneously visible canvases the
@@ -64,7 +64,7 @@ final class XmateCanvasView: PKCanvasView {
 
 // MARK: - ToolPickerHost
 
-/// C-029 ToolPickerHost — owns the single app-wide PKToolPicker.
+/// ToolPickerHost — owns the single app-wide PKToolPicker.
 ///
 /// Singleton. All methods are main-thread only. Has no opinion about which
 /// canvas is active; it merely reflects the session manager's decisions.

@@ -1,4 +1,4 @@
-// C-003 StrokeSerializer
+// StrokeSerializer
 //
 // Converts PKDrawing to and from its on-disk binary representation.
 //

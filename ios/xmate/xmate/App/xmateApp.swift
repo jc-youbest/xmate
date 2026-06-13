@@ -1,4 +1,4 @@
-// Application entry — hosts U-001 AppRoot (RootView).
+// Application entry — hosts AppRoot (RootView).
 //
 // Wires the app-wide stores into the environment and delegates
 // everything else (including document selection) to RootView.

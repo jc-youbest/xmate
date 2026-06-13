@@ -54,9 +54,24 @@ rotates the iPad to match. Revisited in v5.
 | Fit scale | Uniform scale projecting the logical page onto the current screen |
 | Pen pal / Post / Playback | Social-layer concepts, v3+ |
 
+## UI principles
+
+- Switch between the two surfaces with an explicit top-bar control —
+  never a sliding sidebar over the writing surface.
+- The page is one bounded sheet at fixed logical size: zoomable (1×–3×),
+  never infinite, never free-panning beyond its edge, never reflowing.
+- Pencil draws; fingers navigate (swipe, scroll, pan-while-zoomed,
+  double-tap zoom reset). The finger never inks.
+- A thin top bar carries navigation and document actions; the system
+  PKToolPicker stays at the bottom. Destructive actions hide behind an
+  overflow menu with confirmation alerts.
+- A zoomed page is clipped to the canvas area — it never paints over the
+  top bar. Transient feedback (the zoom-percentage HUD) is centered,
+  translucent, touch-transparent, and auto-fades.
+
 ## Direction
 
 Roadmap stages live in `roadmap.md` (v0 local writing → v1 complete
 writing mode → v2 stationery editor → v3 main interface offline → v4
 networked social → v5 device adaptation → v6 moderation). The future
-feature pool is `docs/backlog.md`.
+feature pool is the Backlog section of `roadmap.md`.

@@ -1,4 +1,4 @@
-// C-001 NoteStore
+// NoteStore
 //
 // Core Data store managing Document and Page entities. The persistent
 // store lives in Library/Application Support/, app-private and not
@@ -167,7 +167,7 @@ final class NoteStore: ObservableObject {
     // MARK: - Drawing persistence
     //
     // All writes are addressed by the page's UUID (not a managed-object
-    // reference) so the only caller — C-030 DrawingSessionManager — never has
+    // reference) so the only caller — DrawingSessionManager — never has
     // to hold a main-context Page across threads. Every write carries a
     // monotonic `version`; the store accepts it only when it is strictly
     // greater than the stored version (see `writeDrawing`). Combined with the

@@ -1,4 +1,4 @@
-// C-030 DrawingSessionManager
+// DrawingSessionManager
 //
 // The single arbiter of canvas editing identity. Enforces the core invariant
 // of the object-lifecycle design:
@@ -27,10 +27,10 @@
 //     is promoted. This decouples activation from SwiftUI's async view
 //     creation order.
 //
-// Save path: Coordinator → DrawingSessionManager → C-001 NoteStore.
+// Save path: Coordinator → DrawingSessionManager → NoteStore.
 // No Coordinator ever talks to NoteStore directly.
 //
-// Threading: main-thread only (like C-029 ToolPickerHost). Every entry point
+// Threading: main-thread only (like ToolPickerHost). Every entry point
 // runs on the main thread — SwiftUI callbacks, UIView first-responder
 // transitions, and the willResignActive observer (queued on .main). Disk I/O is
 // delegated to NoteStore which hops to a background context.
