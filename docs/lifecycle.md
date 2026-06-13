@@ -256,16 +256,26 @@ being called *before* `becomeFirstResponder()` does not re-present the
 picker for a responder that becomes first responder afterwards. We have not
 proven which.
 
-**Agreed next step: instrument before changing logic.** Add temporary
-timestamped logs to confirm the failing condition rather than guessing:
+**Instrumentation in place (awaiting a device run).** Temporary logs are
+added under the `[TP]` tag (grep `[TP]` to find/remove them):
+`tpLog` helper in `DrawingSessionManager.swift`, with call sites in
+`register`, `setDesiredActive`, `makeActive` (logs `becomeFirstResponder`'s
+return + `applicationState` + `isKeyWindow` + `inWindow`),
+`canvasBecame/ResignedFirstResponder`, a temporary `didBecomeActive`
+observer, and `ToolPickerHost.setActiveCanvas` (logs whether the canvas is
+already first responder when `setVisible` is called). Every line carries a
+monotonic timestamp and the app state.
 
-- in `makeActive`: the return value of `becomeFirstResponder()`,
-  `UIApplication.shared.applicationState`, and `canvas.window?.isKeyWindow`;
-- one line each in `register`, `setDesiredActive`,
-  `canvasBecame/ResignedFirstResponder`, and a temporary `didBecomeActive`
-  observer.
+How to read the result (run cold launch, then one page turn, compare):
 
-Run cold launch, then one page turn, and compare the two log windows: it
-will show exactly which of the three golden-rule conditions is missing at
-launch, and whether `didBecomeActive` fires before or after registration.
-Fix only after that is established.
+- `makeActive … becameFR=false` at launch → **hypothesis A** (focus fails
+  before the window is key). Fix: assert focus on the scene-active edge and
+  have `makeActive` retry when `becomeFirstResponder` fails.
+- `makeActive … becameFR=true` but the picker is still hidden, and
+  `setVisible … isFR(before)=false` at launch → **hypothesis B** (ordering:
+  `setVisible` is called before the canvas is first responder; works on a
+  page turn only because the picker was already visible). Fix: call
+  `becomeFirstResponder` before `setVisible`, and drop any
+  `!isFirstResponder` guard on re-assert.
+
+Fix only after the logs say which.

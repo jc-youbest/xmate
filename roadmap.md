@@ -189,6 +189,19 @@ ones here. Gaps are normal (withdrawn IDs).
   UserProfileAPI · NoteSyncAPI · NoteShareAPI · FeedService ·
   NotificationDispatcher (APNs) · ModerationService
 
+## Robustness / tech debt
+
+- F-057 Startup data preparation — load document, pages and decode page
+  drawings in an explicit load phase (off the main thread where possible)
+  with `loading` / `ready` / `failed` states, instead of reading inside
+  `onAppear` and decoding strokes synchronously in `makeUIView` during the
+  view flow. Avoids main-thread jank as documents grow.
+- F-058 Stroke-decode failure handling — a page whose drawing data fails
+  to decode must surface an error / be marked corrupt and routed to a
+  recovery flow, never silently render as a blank page (today
+  `StrokeSerializer.decode` returning nil is swallowed, which is silent
+  data loss). Pairs with F-057's `failed` state.
+
 ## Stretch
 
 - F-042 Playback viewing · F-043 Collaborative documents · F-045 Themed

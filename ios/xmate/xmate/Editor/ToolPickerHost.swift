@@ -129,6 +129,10 @@ final class ToolPickerHost: NSObject, PKToolPickerObserver {
     /// notification missed during first-responder churn.
     func setActiveCanvas(_ canvas: XmateCanvasView) {
         canvas.tool = picker.selectedTool
+        // TEMP DIAGNOSTIC [TP] — is the canvas already first responder when we
+        // call setVisible? If not (and makeActive's becomeFirstResponder then
+        // succeeds), the picker may fail to present on the FIRST binding.
+        tpLog("setVisible(true) page=\(canvas.pageID?.uuidString.prefix(4) ?? "----") isFR(before)=\(canvas.isFirstResponder)")
         picker.setVisible(true, forFirstResponder: canvas)
     }
 
