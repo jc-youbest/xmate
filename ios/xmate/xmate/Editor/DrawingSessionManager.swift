@@ -37,25 +37,38 @@
 
 import UIKit
 import PencilKit
+import os
 
-// ───────────────────────────────────────────────────────────────────────────
-// TEMP DIAGNOSTIC — ToolPicker-missing-on-first-page-at-launch bug.
-// Remove after the device-log run: grep "[TP]" to find every line to delete
-// (this helper + its call sites here and in ToolPickerHost.swift).
-// Each line prints a monotonic timestamp and the current applicationState, so
-// the cold-launch log and the page-turn log can be compared event-by-event.
-func tpLog(_ msg: @autoclosure () -> String) {
-    let t = String(format: "%9.3f", ProcessInfo.processInfo.systemUptime)
-    let state: String
-    switch UIApplication.shared.applicationState {
-    case .active:     state = "active"
-    case .inactive:   state = "inactive"
-    case .background: state = "background"
-    @unknown default: state = "?"
+// MARK: - EditorTrace
+
+/// Opt-in lifecycle tracing for the canvas activation / first-responder /
+/// ToolPicker path. DEBUG-only and OFF by default — set
+/// `EditorTrace.isEnabled = true` (from the debugger, or temporarily in code)
+/// when chasing a launch / foreground / paging timing bug, then filter the
+/// `EditorLifecycle` category in Console.app. Each line carries the current
+/// applicationState; os.Logger adds the timestamp. Compiles to nothing in
+/// release. See `docs/lifecycle.md` (callback ordering + problem log) for how
+/// to read a trace and the bugs it has caught.
+enum EditorTrace {
+    #if DEBUG
+    static var isEnabled = false
+    private static let logger = Logger(subsystem: "com.cwc.xmate",
+                                       category: "EditorLifecycle")
+    static func event(_ message: @autoclosure () -> String) {
+        guard isEnabled else { return }
+        let state: String
+        switch UIApplication.shared.applicationState {
+        case .active:     state = "active"
+        case .inactive:   state = "inactive"
+        case .background: state = "background"
+        @unknown default: state = "?"
+        }
+        logger.debug("[\(state, privacy: .public)] \(message(), privacy: .public)")
     }
-    print("[TP] \(t) app=\(state) \(msg())")
+    #else
+    @inline(__always) static func event(_ message: @autoclosure () -> String) {}
+    #endif
 }
-// ───────────────────────────────────────────────────────────────────────────
 
 // MARK: - CanvasRole
 
@@ -124,16 +137,6 @@ final class DrawingSessionManager {
         ) { [weak self] _ in
             self?.flushAllActive()
         }
-
-        // TEMP DIAGNOSTIC [TP] — log the launch/foreground active edge to see
-        // whether it fires before or after register / setDesiredActive.
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            tpLog("didBecomeActive desiredPage=\(self?.desiredActivePageID?.uuidString.prefix(4) ?? "nil") anchorSet=\(self?.anchor != nil)")
-        }
     }
 
     // MARK: - Registration
@@ -143,7 +146,7 @@ final class DrawingSessionManager {
     /// and that page has no active editor yet, promotes it.
     func register(_ canvas: XmateCanvasView, role: CanvasRole, visible: Bool) {
         let id = ObjectIdentifier(canvas)
-        tpLog("register page=\(canvas.pageID.uuidString.prefix(4)) role=\(role) visible=\(visible)")  // [TP]
+        EditorTrace.event("register page=\(canvas.pageID.uuidString.prefix(4)) role=\(role) visible=\(visible)")
         if regs[id] == nil {
             let reg = CanvasReg(canvas: canvas,
                                 pageID: canvas.pageID,
@@ -166,7 +169,7 @@ final class DrawingSessionManager {
             // Promote this freshly-registered canvas even if another canvas
             // (the outgoing mode's, same page) is still active — makeActive
             // flushes and demotes it first.
-            tpLog("  register→promote page=\(canvas.pageID.uuidString.prefix(4))")  // [TP]
+            EditorTrace.event("register→promote page=\(canvas.pageID.uuidString.prefix(4))")
             makeActive(canvas)
         }
     }
@@ -205,12 +208,12 @@ final class DrawingSessionManager {
     func setDesiredActive(pageID: UUID, role: CanvasRole) {
         desiredActivePageID = pageID
         desiredActiveRole = role
-        tpLog("setDesiredActive page=\(pageID.uuidString.prefix(4)) role=\(role)")  // [TP]
+        EditorTrace.event("setDesiredActive page=\(pageID.uuidString.prefix(4)) role=\(role)")
         for reg in regs.values
         where reg.pageID == pageID && reg.role == role && reg.isVisible {
             guard let c = reg.canvas else { continue }
             if activeByPage[pageID] != ObjectIdentifier(c) {
-                tpLog("  setDesiredActive→promote page=\(pageID.uuidString.prefix(4))")  // [TP]
+                EditorTrace.event("setDesiredActive→promote page=\(pageID.uuidString.prefix(4))")
                 makeActive(c)
             }
             break
@@ -246,8 +249,8 @@ final class DrawingSessionManager {
         ToolPickerHost.shared.setActiveCanvas(canvas)
 
         // 4. Take first responder (idempotent w.r.t. the FR override below).
-        let became = canvas.becomeFirstResponder()  // [TP]
-        tpLog("makeActive page=\(pid.uuidString.prefix(4)) role=\(reg.role) becameFR=\(became) isFR=\(canvas.isFirstResponder) inWindow=\(canvas.window != nil) keyWin=\(canvas.window?.isKeyWindow ?? false)")  // [TP]
+        let became = canvas.becomeFirstResponder()
+        EditorTrace.event("makeActive page=\(pid.uuidString.prefix(4)) role=\(reg.role) becameFR=\(became) isFR=\(canvas.isFirstResponder) inWindow=\(canvas.window != nil) keyWin=\(canvas.window?.isKeyWindow ?? false)")
     }
 
     // MARK: - First-responder notifications (from XmateCanvasView)
@@ -257,7 +260,7 @@ final class DrawingSessionManager {
     /// a DIFFERENT page than the current active one, that other page keeps its
     /// own active canvas — only the global picker anchor moves here.
     func canvasBecameFirstResponder(_ canvas: XmateCanvasView) {
-        tpLog("canvasBecameFR page=\(canvas.pageID.uuidString.prefix(4)) role=\(canvas.role)")  // [TP]
+        EditorTrace.event("canvasBecameFR page=\(canvas.pageID.uuidString.prefix(4)) role=\(canvas.role)")
         let id = ObjectIdentifier(canvas)
         guard let reg = regs[id], reg.isVisible else { return }
         if anchor === canvas && reg.isActive { return }   // already current
@@ -286,7 +289,7 @@ final class DrawingSessionManager {
     /// settles, so it can't recurse into a resign↔become loop) and bails if
     /// another canvas has meanwhile taken the anchor.
     func canvasResignedFirstResponder(_ canvas: XmateCanvasView) {
-        tpLog("canvasResignedFR page=\(canvas.pageID.uuidString.prefix(4)) anchorMatch=\(anchor === canvas)")  // [TP]
+        EditorTrace.event("canvasResignedFR page=\(canvas.pageID.uuidString.prefix(4)) anchorMatch=\(anchor === canvas)")
         guard anchor === canvas else { return }
         anchor = nil
         DispatchQueue.main.async { [weak self] in

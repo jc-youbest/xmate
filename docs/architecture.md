@@ -146,6 +146,21 @@ zoomed); a transient centered ZoomHUD reports the percentage and
 auto-fades. *Rejected:* free-panning / infinite canvas — xmate is
 bounded stationery, not a whiteboard.
 
+### Activation bootstrap
+
+The pagination views (SinglePagesView / ContinuousPagesView) declare the
+desired-active page to DrawingSessionManager in a **one-shot `onAppear`**.
+Therefore the editor must not instantiate them before the page list is
+loaded: `WritingScreen` gates the canvas area on `!pages.isEmpty`, so the
+pagination view is created once, with pages present, and its `onAppear`
+runs `setDesiredActive` — which is what makes a canvas get promoted
+(`makeActive` → first responder → ToolPicker) on the first page at launch.
+*Rejected (caused the bug):* rendering the pagination view before pages
+load — its `onAppear` then fired with an empty page list, `setDesiredActive`
+was never called, no canvas was promoted, and the PKToolPicker never bound
+until a page turn re-declared the desired page. Full story and the
+`EditorTrace` toggle for re-tracing this path: `docs/lifecycle.md`.
+
 ## Tech stack
 
 - iPadOS 18.0+ minimum; Swift, SwiftUI (UIKit where SwiftUI gaps exist);

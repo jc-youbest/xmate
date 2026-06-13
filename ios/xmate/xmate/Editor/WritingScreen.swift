@@ -96,7 +96,16 @@ struct WritingScreen: View {
     var body: some View {
         VStack(spacing: 0) {
 
-            // WritingTopBar — only shown once pages are loaded.
+            // Build the top bar AND the pagination view only once pages are
+            // loaded. The pagination views (SinglePagesView / ContinuousPagesView)
+            // declare the desired-active page in their one-shot `onAppear`; if
+            // that fired while `pages` was still empty (the pre-loadPages frame),
+            // `syncDesiredActive`'s `guard !pages.isEmpty` bailed, the desired
+            // page was never set, no canvas was ever promoted, and the
+            // PKToolPicker never bound — it only appeared after a page turn
+            // re-declared the desired page. Gating the canvas area here means the
+            // pagination view is created once, with pages present, so its
+            // onAppear declares the desired page and activation runs at launch.
             if !pages.isEmpty {
                 WritingTopBar(
                     currentIndex: currentPageIndex,
@@ -108,12 +117,17 @@ struct WritingScreen: View {
                     onDeletePage: { showDeletePageAlert = true },
                     onDeleteDocument: { showDeleteDocumentAlert = true }
                 )
-            }
 
-            // Canvas area extracted into a helper to keep body small enough
-            // for the Swift type checker (the GeometryReader + gesture tree
-            // would otherwise exceed the compiler's expression-complexity limit).
-            canvasArea
+                // Canvas area extracted into a helper to keep body small enough
+                // for the Swift type checker (the GeometryReader + gesture tree
+                // would otherwise exceed the compiler's expression-complexity limit).
+                canvasArea
+            } else {
+                // Pages not resolved yet — show the letterbox background, never
+                // an empty-page pagination view (see comment above).
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
+            }
         }
         .onAppear(perform: loadPages)
 

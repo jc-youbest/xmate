@@ -223,59 +223,52 @@ Major lifecycle/timing problems, newest first. Record the symptom, what is
 actually known, what was tried and rejected, and the current status — so a
 future session does not re-walk the same dead ends.
 
-### ToolPicker missing on the first page at cold launch — STATUS: OPEN (2026-06)
+### ToolPicker missing on the first page at cold launch — STATUS: RESOLVED (2026-06)
 
-**Symptom.** On a fresh launch into page 1, the PKToolPicker does not
-appear. Turning to page 2 (or switching pagination style) makes it appear,
-after which it stays correct.
+**Confirmed root cause (from the `[TP]` device log).** The full cold-launch
+log was: 7 canvases `register` (app=inactive), then `didBecomeActive` with
+`desiredPage=nil` — and **no `setDesiredActive`, no `register→promote`, no
+`makeActive`, no `canvasBecameFR` at all.** So at launch `makeActive` never
+runs and the picker is never bound. The earlier A/B debate
+(becomeFirstResponder timing / setVisible ordering) was a red herring —
+execution never reached `becomeFirstResponder`. It also explains why the
+`didBecomeActive` re-assert attempt did nothing: `desiredPage` was `nil`.
 
-**Key clue.** A page turn reliably fixes it. A page turn re-runs
-`makeActive` at a time when the app is already active. This points at
-**activation timing, not registration**: the first `makeActive` at launch
-runs while the app/window is not yet active+key, so its
-`becomeFirstResponder()` fails (golden rule, §2), and `makeActive` neither
-checks the result nor retries.
+Why the desired page is never declared: `SinglePagesView`'s one-shot
+`.onAppear → syncDesiredActive()` fires while `pages` is still empty (the
+frame before `WritingScreen.loadPages` runs), so its `guard !pages.isEmpty`
+bails. `pages` then populates and the canvases register, but `onAppear`
+does not fire again, so `setDesiredActive` is never called. A page turn
+calls it via `onChange(of: currentPageIndex)` — hence "page 2 fixes it."
+Both pagination views share this latent bug.
 
-**Rejected / insufficient fixes (both failed on device):**
+**Fix.** `WritingScreen` gates the canvas area (the pagination view) on
+`!pages.isEmpty`, so the pagination view is created once, with pages
+present, and its `onAppear` declares the desired page at launch. Confirmed
+on device: the trace then showed `setDesiredActive` → `register→promote` →
+`makeActive becameFR=true` and the picker appeared. The durable design rule
+is recorded in `architecture.md` (Flow design notes → Activation bootstrap).
 
-1. *Drive registration off `XmateCanvasView.didMoveToWindow`* instead of
-   the deferred async in `updateUIView`. No effect — registration was
-   never the problem; window-attach still precedes window-key, so the
-   first `becomeFirstResponder` failed regardless.
-2. *Observe `UIApplication.didBecomeActiveNotification` and re-run
-   `makeActive` on the desired-active canvas.* Also failed on device.
-   Suspected reason: `didBecomeActive` likely fires before the canvas is
-   registered / `setDesiredActive` is set (the document/page load happens
-   in onAppear callbacks), so the re-assert finds nothing — yet the later
-   registration `makeActive` still did not show the picker. This means the
-   exact failing condition is **not yet confirmed.**
+**Findings worth keeping (so they are not re-litigated):**
 
-**Current best hypothesis (unconfirmed).** At the first activation one of
-the golden-rule conditions is not met, and/or `setVisible(forFirstResponder:)`
-being called *before* `becomeFirstResponder()` does not re-present the
-picker for a responder that becomes first responder afterwards. We have not
-proven which.
+- The earlier "first-responder timing" framing was a red herring —
+  execution never reached `becomeFirstResponder` at launch, because
+  `makeActive` never ran at all.
+- The confirming trace showed `makeActive … becameFR=true keyWin=true`
+  while `app=inactive`: **`becomeFirstResponder` succeeds before the app is
+  active, as long as the canvas's window is key.** "Wait for the app to
+  become active" was never needed; only the desired-page declaration was.
+- Two fixes that did NOT work — do not retry them: (1) driving registration
+  off `XmateCanvasView.didMoveToWindow` (registration was never the
+  problem); (2) a `didBecomeActiveNotification` re-assert (it found
+  `desiredPage=nil` and did nothing — because the real bug was that the
+  desired page was never declared).
 
-**Instrumentation in place (awaiting a device run).** Temporary logs are
-added under the `[TP]` tag (grep `[TP]` to find/remove them):
-`tpLog` helper in `DrawingSessionManager.swift`, with call sites in
-`register`, `setDesiredActive`, `makeActive` (logs `becomeFirstResponder`'s
-return + `applicationState` + `isKeyWindow` + `inWindow`),
-`canvasBecame/ResignedFirstResponder`, a temporary `didBecomeActive`
-observer, and `ToolPickerHost.setActiveCanvas` (logs whether the canvas is
-already first responder when `setVisible` is called). Every line carries a
-monotonic timestamp and the app state.
-
-How to read the result (run cold launch, then one page turn, compare):
-
-- `makeActive … becameFR=false` at launch → **hypothesis A** (focus fails
-  before the window is key). Fix: assert focus on the scene-active edge and
-  have `makeActive` retry when `becomeFirstResponder` fails.
-- `makeActive … becameFR=true` but the picker is still hidden, and
-  `setVisible … isFR(before)=false` at launch → **hypothesis B** (ordering:
-  `setVisible` is called before the canvas is first responder; works on a
-  page turn only because the picker was already visible). Fix: call
-  `becomeFirstResponder` before `setVisible`, and drop any
-  `!isFirstResponder` guard on re-assert.
-
-Fix only after the logs say which.
+**The trace lives on.** The temporary `[TP]` instrumentation was
+productionised into `EditorTrace` (`DrawingSessionManager.swift`):
+DEBUG-only, OFF by default, compiles to nothing in release. To trace this
+path again (launch / foreground / paging timing), set
+`EditorTrace.isEnabled = true` and filter the `EditorLifecycle` category in
+Console.app. Probe points: `register`, `setDesiredActive`, `makeActive`
+(logs `becomeFirstResponder`'s result + `isKeyWindow` + `inWindow`),
+`canvasBecame/ResignedFirstResponder`, and `ToolPickerHost.setActiveCanvas`.
