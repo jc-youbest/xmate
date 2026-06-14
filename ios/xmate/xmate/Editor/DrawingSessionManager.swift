@@ -56,6 +56,10 @@ enum EditorTrace {
                                        category: "EditorLifecycle")
     static func event(_ message: @autoclosure () -> String) {
         guard isEnabled else { return }
+        // Materialise the autoclosure into a local before handing it to the
+        // os.Logger interpolation, whose appended segments are escaping
+        // autoclosures (a non-escaping parameter cannot be captured there).
+        let text = message()
         let state: String
         switch UIApplication.shared.applicationState {
         case .active:     state = "active"
@@ -63,7 +67,7 @@ enum EditorTrace {
         case .background: state = "background"
         @unknown default: state = "?"
         }
-        logger.debug("[\(state, privacy: .public)] \(message(), privacy: .public)")
+        logger.debug("[\(state, privacy: .public)] \(text, privacy: .public)")
     }
     #else
     @inline(__always) static func event(_ message: @autoclosure () -> String) {}
