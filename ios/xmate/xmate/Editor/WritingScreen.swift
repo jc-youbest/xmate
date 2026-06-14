@@ -117,6 +117,11 @@ struct WritingScreen: View {
                     onDeletePage: { showDeletePageAlert = true },
                     onDeleteDocument: { showDeleteDocumentAlert = true }
                 )
+                // Hit-test the top bar ABOVE the canvas area: a zoomed page is
+                // scaled up and its touch area overflows its slot up into the
+                // top-bar strip; without this the overflowing canvas captured
+                // the button taps (F-060). zIndex makes the bar win that strip.
+                .zIndex(1)
 
                 // Canvas area extracted into a helper to keep body small enough
                 // for the Swift type checker (the GeometryReader + gesture tree
