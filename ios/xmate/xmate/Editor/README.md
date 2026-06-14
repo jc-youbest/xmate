@@ -30,8 +30,17 @@
 
 ## Next step (current stage)
 
-- Reading Mode variant; writing-mode media attachments; per-document
-  paper (drop the `PaperPreset.letter` hard-code once Storage migrates).
+In priority order:
+
+- F-059 zoom-pan physics — add inertia + edge rubber-band to the zoomed
+  finger pan (today it stops dead on finger-up, no bounce).
+- F-060 top-bar dead while zoomed — taps on WritingTopBar raise the
+  PKCanvasView edit menu ("Select All / Insert Space") instead of hitting
+  the buttons; restore hit-testing + suppress the canvas edit menu.
+- F-054 writing-mode media attachments (Apple-Notes-like).
+
+Later (behind v2): Reading Mode variant; per-document paper (drop the
+`PaperPreset.letter` hard-code once Storage migrates).
 
 ## Notes for AI changes
 

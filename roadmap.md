@@ -76,6 +76,16 @@ matches Apple Notes. These writing-mode attachments — distinct from the
 photos placed in stationery mode (v2) — can be moved, scaled, and deleted
 at any time. They scale together with the page under zoom.
 
+**v1 status (as built, 2026-06).** Shipped: multi-page + paging, add /
+delete page, delete document, the top bar, both Pagination Styles (F-056),
+zoom (F-053), stroke persistence. NOT yet shipped despite the description
+above — the Postcard preset (paper is hard-coded to Letter pending a
+per-document paper migration), the Social Screen stub (F-055), Reading
+Mode, and media attachments (F-054). Current priority re-orders the
+remainder: finish the zoom defects (F-059, F-060) and media (F-054), then
+move to v2 stationery; the Social stub, Reading Mode and per-document paper
+are deferred behind v2. Remaining items are tracked in the Backlog.
+
 ## v2 — Personalized stationery template editor
 
 App opens into a stationery editing UI. The user composes a single-page
@@ -150,11 +160,29 @@ ones here. Gaps are normal (withdrawn IDs).
 
 ## v1 remainder
 
+Next Editor increment (current priority), in order:
+
+- F-059 Zoom-pan physics — while zoomed, the finger pan has no inertia and
+  no edge rubber-band: lifting the finger stops the page dead. Add momentum
+  deceleration + rubber-band bounce at the page edges, matching the feel of
+  Continuous paging hitting its end. Polishes F-053.
+- F-060 Top-bar buttons dead while zoomed — when zoomed, taps on
+  WritingTopBar do nothing (Add Page, overflow menu) and instead raise the
+  PKCanvasView edit callout ("Select All / Insert Space"): the zoomed canvas
+  / its edit interaction is capturing touches over the top-bar region.
+  Restore top-bar hit-testing and suppress the canvas edit menu. Fixes
+  F-053.
 - F-054 Insert media while writing — Apple-Notes-like attachments that
-  move/scale/delete anytime and zoom with the page
+  move/scale/delete anytime and zoom with the page.
+
+Deferred behind v2 (were v1; re-prioritised — authoring foundation first):
+
 - F-055 Social Screen v1 stub — structural shell + explicit switching
-  with the Content Screen
-- Reading Mode — read-only Content Screen variant sharing the layout
+  with the Content Screen.
+- Reading Mode — read-only Content Screen variant sharing the layout.
+- Per-document paper — drop the `PaperPreset.letter` hard-code (Core Data
+  migration) so the Postcard preset actually ships; folds into the v2
+  Storage restructure.
 
 ## v2 — Stationery (editor + library modules)
 
@@ -195,7 +223,11 @@ ones here. Gaps are normal (withdrawn IDs).
   drawings in an explicit load phase (off the main thread where possible)
   with `loading` / `ready` / `failed` states, instead of reading inside
   `onAppear` and decoding strokes synchronously in `makeUIView` during the
-  view flow. Avoids main-thread jank as documents grow.
+  view flow. Avoids main-thread jank as documents grow. Evidence: a
+  Single↔Continuous mode switch rebuilds every canvas and synchronously
+  decodes every page, producing a measured ~0.31 s main-thread hang on a
+  7-page document (debugger attached, so inflated — re-measure in a release
+  build with Instruments). Same synchronous-decode cost also hits launch.
 - F-058 Stroke-decode failure handling — a page whose drawing data fails
   to decode must surface an error / be marked corrupt and routed to a
   recovery flow, never silently render as a blank page (today
