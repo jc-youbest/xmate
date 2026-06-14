@@ -11,20 +11,24 @@ remaining compatible with Apple Pencil 1st generation.
 
 ## Repository Layout
 
-- `docs/` — feature specs, UI tree, component and backend catalogs, glossary.
-- `ios/` — Xcode project (created later).
+- `CLAUDE.md` — context for AI-assisted development sessions.
+- `roadmap.md` — development path (stages v0..v6) and the Backlog.
+- `docs/` — two files: `product.md` and `architecture.md`.
+- `ios/` — Xcode project; each module folder under
+  `ios/xmate/xmate/` carries its own `README.md`.
 - `backend/` — custom backend code (created later).
 - `assets/` — design assets and reference materials.
 - `scripts/` — utility scripts.
 
 ## Documentation Entry Points
 
-- [`CLAUDE.md`](CLAUDE.md) — context for AI-assisted development sessions.
-- [`docs/requirements/`](docs/requirements/) — feature index and per-feature flow specs.
-- [`docs/ui/`](docs/ui/) — UI containment tree.
-- [`docs/components/`](docs/components/) — iOS component catalog.
-- [`docs/backend/`](docs/backend/) — backend module catalog.
-- [`docs/glossary.md`](docs/glossary.md) — shared vocabulary.
+- [`CLAUDE.md`](CLAUDE.md) — start here for any development session.
+- [`roadmap.md`](roadmap.md) — where the project is, what's next, and the
+  future-feature backlog.
+- [`docs/product.md`](docs/product.md) — product vision, model,
+  terminology, and UI principles.
+- [`docs/architecture.md`](docs/architecture.md) — module layering,
+  invariants, paper model, and Xcode project conventions.
 
 ## Test Hardware
 
