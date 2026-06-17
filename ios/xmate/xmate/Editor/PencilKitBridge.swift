@@ -88,7 +88,9 @@ struct PencilKitBridge: UIViewRepresentable {
     /// Pass nil when userZoom == 1.0 to keep the recogniser disabled so it
     /// cannot compete with the swipe recognisers for page navigation.
     var fingerPanChanged: ((CGSize) -> Void)?
-    var fingerPanEnded: (() -> Void)?
+    /// Called once on gesture end/cancel with the release velocity (pt/s in
+    /// window coordinates), so PageZoomModel can apply inertial momentum.
+    var fingerPanEnded: ((CGSize) -> Void)?
 
     // MARK: - Coordinator
 
@@ -100,7 +102,7 @@ struct PencilKitBridge: UIViewRepresentable {
         var onFingerDoubleTap: (() -> Void)?
 
         var fingerPanChanged: ((CGSize) -> Void)?
-        var fingerPanEnded: (() -> Void)?
+        var fingerPanEnded: ((CGSize) -> Void)?
         /// Weak ref so we can enable/disable the recogniser in updateUIView.
         weak var fingerPanRecognizer: UIPanGestureRecognizer?
 
@@ -131,7 +133,10 @@ struct PencilKitBridge: UIViewRepresentable {
             case .changed:
                 fingerPanChanged?(CGSize(width: t.x, height: t.y))
             case .ended, .cancelled, .failed:
-                fingerPanEnded?()
+                // velocity(in: nil) is window-coordinate pt/s, matching the
+                // translation space used above.
+                let v = r.velocity(in: nil)
+                fingerPanEnded?(CGSize(width: v.x, height: v.y))
             default:
                 break
             }

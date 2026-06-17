@@ -82,24 +82,78 @@ final class PageZoomModel: ObservableObject {
     }
 
     // MARK: - Finger pan (forwarded from the canvas recogniser)
+    //
+    // Physics (F-059), all constants tunable on device:
+    //   • drag — rubber-band past the edge: identity inside the bound, then
+    //     diminishing resistance, so the page can be pulled a little past the
+    //     edge instead of stopping dead;
+    //   • release — project a landing point from the gesture velocity, clamp it
+    //     into bounds, and spring there: inertial glide inside the bounds and a
+    //     soft bounce back from any overshoot, like Continuous scroll hitting
+    //     its end.
+
+    /// Beyond-edge resistance shape.
+    private static let overshootResistance: CGFloat = 0.55
+    private static let overshootCap: CGFloat = 120        // pt the overshoot asymptotes toward
+    /// Release momentum: seconds of projected travel at the release velocity,
+    /// and the spring that carries the page to the landing point / back from an
+    /// overshoot.
+    private static let momentumScale: CGFloat = 0.20 // orignal 0.10: Claude suggests the bigger the scale, smoother
+    private static let springResponse: CGFloat = 0.60 // original 0.45
+    private static let springDamping: CGFloat = 0.82
 
     /// `translation` is the total translation since the gesture began;
     /// `halfOverflow` is the per-axis bound (≥ 0) computed by the caller
     /// from the current viewport and paper dimensions.
     func panChanged(translation: CGSize, halfOverflow: CGSize) {
         panOffset = CGSize(
-            width: (gestureBasePan.width + translation.width)
-                .clamped(to: -halfOverflow.width...halfOverflow.width),
-            height: (gestureBasePan.height + translation.height)
-                .clamped(to: -halfOverflow.height...halfOverflow.height)
+            width: Self.rubberBand(gestureBasePan.width + translation.width,
+                                   limit: halfOverflow.width),
+            height: Self.rubberBand(gestureBasePan.height + translation.height,
+                                    limit: halfOverflow.height)
         )
     }
 
-    func panEnded() {
-        gestureBasePan = panOffset
+    /// Called on finger-up with the gesture's release velocity (pt/s).
+    func panEnded(velocity: CGSize, halfOverflow: CGSize) {
+        let target = CGSize(
+            width: (panOffset.width + velocity.width * Self.momentumScale)
+                .clamped(to: -halfOverflow.width...halfOverflow.width),
+            height: (panOffset.height + velocity.height * Self.momentumScale)
+                .clamped(to: -halfOverflow.height...halfOverflow.height)
+        )
+        gestureBasePan = target
+        withAnimation(.spring(response: Self.springResponse,
+                              dampingFraction: Self.springDamping)) {
+            panOffset = target
+        }
+    }
+
+    /// Identity inside `[-limit, limit]`, diminishing resistance beyond it.
+    private static func rubberBand(_ value: CGFloat, limit: CGFloat) -> CGFloat {
+        guard limit >= 0 else { return 0 }
+        if value >  limit { return  limit + overshoot(value - limit) }
+        if value < -limit { return -limit - overshoot(-value - limit) }
+        return value
+    }
+
+    private static func overshoot(_ excess: CGFloat) -> CGFloat {
+        excess * overshootResistance / (1 + excess / overshootCap)
     }
 
     // MARK: - Reset (double-tap / top-bar button / page change)
+
+    /// Animated reset to 100% with a one-shot HUD flash — the standard
+    /// response to the top-bar reset button and the finger double-tap. Owning
+    /// the animation here keeps callers (incl. the pagination views) from
+    /// passing a closure, so those views can stay `Equatable` and skip the
+    /// per-frame re-render during zoom/pan.
+    func resetAnimated() {
+        guard isZoomed else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            reset(flashHUD: true)
+        }
+    }
 
     /// Back to 100% (fit). `flashHUD: true` shows "100%" briefly as feedback
     /// for an explicit user reset; page-change resets pass false.

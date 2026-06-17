@@ -57,7 +57,7 @@ struct SinglePagesView: View {
     /// CURRENT page's PencilKitBridge only, which attaches the recogniser
     /// to the canvas.
     let fingerPanChanged: ((CGSize) -> Void)?
-    let fingerPanEnded: (() -> Void)?
+    let fingerPanEnded: ((CGSize) -> Void)?
     /// Finger double-tap → reset zoom to 100% (F-053).
     let onFingerDoubleTap: (() -> Void)?
 

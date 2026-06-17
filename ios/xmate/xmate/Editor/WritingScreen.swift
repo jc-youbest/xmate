@@ -208,8 +208,8 @@ struct WritingScreen: View {
         let panChanged: ((CGSize) -> Void)? = zoom.isZoomed ? { translation in
             zoom.panChanged(translation: translation, halfOverflow: halfOverflow)
         } : nil
-        let panEnded: (() -> Void)? = zoom.isZoomed ? {
-            zoom.panEnded()
+        let panEnded: ((CGSize) -> Void)? = zoom.isZoomed ? { velocity in
+            zoom.panEnded(velocity: velocity, halfOverflow: halfOverflow)
         } : nil
 
         ZStack {
@@ -242,10 +242,13 @@ struct WritingScreen: View {
                     onScrollTargetConsumed: { scrollTarget = nil },
                     restorePageIndex: currentPageIndex,
                     isZoomed: zoom.isZoomed,
-                    fingerPanChanged: panChanged,
-                    fingerPanEnded: panEnded,
-                    onFingerDoubleTap: resetZoom
+                    zoom: zoom
                 )
+                // .equatable() gates the body: a pinch/pan re-runs this `body`
+                // every frame, but ContinuousPagesView skips re-rendering (its
+                // == ignores the zoom transform), so the canvases are NOT
+                // rebuilt. Only the modifiers below re-apply per frame.
+                .equatable()
                 // userZoom on top of the per-page fitScale already applied
                 // inside ContinuousPagesView; identity when not zoomed.
                 .scaleEffect(zoom.userZoom)
