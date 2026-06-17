@@ -129,10 +129,15 @@ struct PencilKitBridge: UIViewRepresentable {
             // translation(in: nil) returns window coordinates, which equal
             // SwiftUI layout coordinates for a portrait-locked app.
             let t = r.translation(in: nil)
+            // Perf-probe label distinguishes the two pagination styles.
+            let perfLabel = canvas?.role == .continuous ? "pan-cont" : "pan-single"
             switch r.state {
+            case .began:
+                EditorTrace.perfBegin(perfLabel)
             case .changed:
                 fingerPanChanged?(CGSize(width: t.x, height: t.y))
             case .ended, .cancelled, .failed:
+                EditorTrace.perfEnd(perfLabel)
                 // velocity(in: nil) is window-coordinate pt/s, matching the
                 // translation space used above.
                 let v = r.velocity(in: nil)
@@ -245,6 +250,10 @@ struct PencilKitBridge: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: XmateCanvasView, context: Context) {
+        // Perf probe: counts re-renders within a pan/pinch gesture (no-op unless
+        // EditorTrace.isEnabled).
+        EditorTrace.perfTick()
+
         // Re-apply on update — on real devices, drawingPolicy can fail to
         // take effect before the view enters the window hierarchy.
         uiView.drawingPolicy = .pencilOnly

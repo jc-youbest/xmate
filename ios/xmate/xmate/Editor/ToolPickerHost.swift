@@ -68,7 +68,8 @@ final class XmateCanvasView: PKCanvasView {
     /// PencilKit drawing does not use these actions, so disabling them all is
     /// safe.
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        false
+        EditorTrace.event("canPerformAction \(action)")  // TEMP: edit-menu diagnosis
+        return false
     }
 }
 

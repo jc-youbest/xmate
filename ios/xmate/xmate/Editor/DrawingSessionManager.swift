@@ -51,7 +51,7 @@ import os
 /// to read a trace and the bugs it has caught.
 enum EditorTrace {
     #if DEBUG
-    static var isEnabled = false
+    static var isEnabled = true  // TEMP: revert to false after the F-059 perf measurement
     private static let logger = Logger(subsystem: "com.cwc.xmate",
                                        category: "EditorLifecycle")
     static func event(_ message: @autoclosure () -> String) {
@@ -69,8 +69,41 @@ enum EditorTrace {
         }
         logger.debug("[\(state, privacy: .public)] \(text, privacy: .public)")
     }
+
+    // MARK: Perf probe
+    //
+    // Count UIViewRepresentable `updateUIView` calls within a single gesture, to
+    // quantify the per-frame re-render cost: a decoupled view (Continuous) should
+    // show ≈ 0 during a pan, an undecoupled one (Single) hundreds. perfBegin is
+    // idempotent within a session so a continuous gesture (e.g. pinch onChanged
+    // firing every frame) starts the window only once.
+    private static var perfActive: String?
+    private static var perfCount = 0
+    private static var perfStart: TimeInterval = 0
+
+    static func perfBegin(_ label: String) {
+        guard isEnabled, perfActive == nil else { return }
+        perfActive = label
+        perfCount = 0
+        perfStart = ProcessInfo.processInfo.systemUptime
+    }
+
+    static func perfTick() {
+        guard isEnabled, perfActive != nil else { return }
+        perfCount += 1
+    }
+
+    static func perfEnd(_ label: String) {
+        guard isEnabled, perfActive == label else { return }
+        let ms = (ProcessInfo.processInfo.systemUptime - perfStart) * 1000
+        logger.debug("[perf] \(label, privacy: .public): \(perfCount) updateUIView in \(Int(ms)) ms")
+        perfActive = nil
+    }
     #else
     @inline(__always) static func event(_ message: @autoclosure () -> String) {}
+    @inline(__always) static func perfBegin(_ label: String) {}
+    @inline(__always) static func perfTick() {}
+    @inline(__always) static func perfEnd(_ label: String) {}
     #endif
 }
 
@@ -130,6 +163,14 @@ final class DrawingSessionManager {
     /// Debounce window for drawing-change saves (matches the previous
     /// Coordinator value).
     private let saveDebounce: TimeInterval = 0.25
+
+    /// While zoomed, the page geometry churns (scaleEffect/offset + spring) and
+    /// the OS rapidly resigns/re-acquires the canvas's first responder. Auto-
+    /// recovering on every resign turns that into a self-sustaining resign↔become
+    /// loop that saturates the main thread and freezes panning. Suspend recovery
+    /// while zoomed; restore the picker (rebind only, no reload) when zoom
+    /// returns to fit. Set by WritingScreen via `setRecoverySuspended`.
+    private var recoverySuspended = false
 
     private init() {
         // Force-flush every active canvas when the app is about to suspend so
@@ -296,6 +337,11 @@ final class DrawingSessionManager {
         EditorTrace.event("canvasResignedFR page=\(canvas.pageID.uuidString.prefix(4)) anchorMatch=\(anchor === canvas)")
         guard anchor === canvas else { return }
         anchor = nil
+        // While zoomed, geometry churn (scaleEffect/offset + spring) makes the
+        // OS resign FR repeatedly; auto-recovering each one forms a resign↔become
+        // loop that freezes panning. Don't recover until zoom returns to fit —
+        // setRecoverySuspended(false) restores the picker then.
+        guard !recoverySuspended else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             // Someone already became first responder — nothing to recover.
@@ -308,6 +354,29 @@ final class DrawingSessionManager {
                 self.makeActive(c)
                 break
             }
+        }
+    }
+
+    /// Called by WritingScreen when zoom enters (`true`) / leaves (`false`) fit.
+    /// While suspended, `canvasResignedFirstResponder` does not auto-recover, so
+    /// the geometry-churn resigns during a zoomed pan can't form a freeze loop.
+    /// On resume, the picker is restored by REBINDING the still-active canvas
+    /// (no `reload`, which would clobber strokes written while zoomed).
+    func setRecoverySuspended(_ suspended: Bool) {
+        guard recoverySuspended != suspended else { return }
+        recoverySuspended = suspended
+        guard !suspended else { return }
+        guard let wantPage = desiredActivePageID,
+              let wantRole = desiredActiveRole else { return }
+        for reg in regs.values
+        where reg.pageID == wantPage && reg.role == wantRole && reg.isVisible {
+            guard let c = reg.canvas else { continue }
+            reg.isActive = true
+            activeByPage[reg.pageID] = ObjectIdentifier(c)
+            anchor = c
+            ToolPickerHost.shared.setActiveCanvas(c)
+            _ = c.becomeFirstResponder()
+            break
         }
     }
 

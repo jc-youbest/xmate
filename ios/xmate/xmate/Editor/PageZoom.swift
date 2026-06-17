@@ -60,7 +60,18 @@ final class PageZoomModel: ObservableObject {
 
     // MARK: - Pinch (MagnificationGesture)
 
+    /// Mirror an externally-owned zoom (the Single-Page UIScrollView in
+    /// ZoomablePage) into the model PURELY for the HUD + top-bar percentage.
+    /// Does NOT touch panOffset (that is only the Continuous hand-rolled pan).
+    /// Shows the HUD while changing and fades it after the last change.
+    func setDisplayZoom(_ multiple: CGFloat) {
+        userZoom = multiple.clamped(to: Self.minZoom...Self.maxZoom)
+        showHUD()
+        scheduleHUDHide()
+    }
+
     func pinchChanged(_ value: CGFloat) {
+        EditorTrace.perfBegin("pinch")  // idempotent; starts the window on the first change
         userZoom = (gestureBaseZoom * value)
             .clamped(to: Self.minZoom...Self.maxZoom)
         if !isZoomed {
@@ -79,6 +90,7 @@ final class PageZoomModel: ObservableObject {
             gestureBasePan = .zero
         }
         scheduleHUDHide()
+        EditorTrace.perfEnd("pinch")
     }
 
     // MARK: - Finger pan (forwarded from the canvas recogniser)

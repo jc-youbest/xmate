@@ -208,6 +208,13 @@ struct ContinuousPagesView: View, Equatable {
                         return max(0, min(pages.count - 1, idx))
                     }
                 } action: { _, newIdx in
+                    // While zoomed the ScrollView is frozen, but the container
+                    // .scaleEffect/.offset still perturbs the reported geometry.
+                    // Letting that drive currentPageIndex oscillates it →
+                    // setDesiredActive → makeActive churn → a first-responder loop
+                    // that freezes the pan. Ignore geometry-derived index changes
+                    // while zoomed; the current page is fixed then.
+                    guard !isZoomed else { return }
                     currentPageIndex = newIdx
                 }
 
