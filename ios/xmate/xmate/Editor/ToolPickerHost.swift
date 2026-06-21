@@ -47,9 +47,6 @@ final class XmateCanvasView: PKCanvasView {
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
-        #if DEBUG
-        print("[DT-DIAG] \(String(format: "%9.3f", ProcessInfo.processInfo.systemUptime)) becomeFirstResponder role=\(role) -> \(became)")
-        #endif
         if became {
             DrawingSessionManager.shared.canvasBecameFirstResponder(self)
         }
@@ -58,9 +55,6 @@ final class XmateCanvasView: PKCanvasView {
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
-        #if DEBUG
-        print("[DT-DIAG] \(String(format: "%9.3f", ProcessInfo.processInfo.systemUptime)) resignFirstResponder role=\(role) -> \(resigned)")
-        #endif
         if resigned {
             DrawingSessionManager.shared.canvasResignedFirstResponder(self)
         }
@@ -74,16 +68,11 @@ final class XmateCanvasView: PKCanvasView {
     /// PencilKit drawing does not use these actions, so disabling them all is
     /// safe.
     ///
-    /// DT-DIAG NOTE: this is known to be INSUFFICIENT for the Single-Page
-    /// double-tap reset menu. The logging records whether UIKit even calls this
-    /// on our canvas when that menu appears — if it does NOT, the menu is being
-    /// built from a private PencilKit subview's own UIEditMenuInteraction, whose
-    /// actions never pass through this override.
+    /// Note: this governs only edit actions routed through THIS canvas. The
+    /// Single-Page zoomed selection menu is hosted by a private PencilKit subview
+    /// (PKTiledView) and is handled separately in ZoomablePage — see
+    /// `refreshSelectionRecognizers`.
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        #if DEBUG
-        print("[DT-DIAG] \(String(format: "%9.3f", ProcessInfo.processInfo.systemUptime)) canPerformAction sel=\(NSStringFromSelector(action)) sender=\(sender.map { String(describing: type(of: $0)) } ?? "nil") role=\(role) -> false")
-        #endif
-        EditorTrace.event("canPerformAction \(action)")
         return false
     }
 }

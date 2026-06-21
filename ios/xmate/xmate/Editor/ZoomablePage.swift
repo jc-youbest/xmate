@@ -126,9 +126,6 @@ struct ZoomablePage: UIViewRepresentable {
         }
 
         func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
-            #if DEBUG
-            print("[DT-DIAG] \(Self.dtTimestamp()) scrollViewDidEndZooming atScale=\(String(format: "%.3f", scale))")
-            #endif
             // A zoom relayout can recreate PencilKit's PKSelectionGestureView and
             // its tap recognisers, so re-establish the link + zoom-state suppression
             // after each zoom (idempotent; sets the current desired state).
@@ -150,73 +147,49 @@ struct ZoomablePage: UIViewRepresentable {
         /// refreshSelectionRecognizers: (2C) PencilKit's selection taps require our
         /// double-tap to fail, and (2D) while zoomed they are disabled outright.
         @objc func handleDoubleTap(_ r: UITapGestureRecognizer) {
-            guard let sv = scrollView else { return }
-            #if DEBUG
-            dtLogDoubleTap(r, sv: sv)
-            #endif
-            guard sv.zoomScale > sv.minimumZoomScale + 0.0001 else { return }
+            guard let sv = scrollView,
+                  sv.zoomScale > sv.minimumZoomScale + 0.0001 else { return }
             sv.setZoomScale(sv.minimumZoomScale, animated: true)
-            #if DEBUG
-            // Re-dump after the reset animation should have completed, to catch
-            // any menu-host / first-responder churn caused by the zoom relayout.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
-                guard let self, let c = self.canvas else { return }
-                print("[DT-DIAG] \(Self.dtTimestamp()) post-reset canvas.isFR=\(c.isFirstResponder)")
-                self.dtDumpSubtree(c, tag: "post-reset")
-            }
-            #endif
         }
 
-        // MARK: - PencilKit selection-recogniser coordination (edit-menu fixes)
+        // MARK: - PencilKit selection-recogniser coordination (edit-menu fix)
         //
-        // Two cooperating fixes, both acting ONLY on the private tap recognisers
-        // PencilKit hosts on PKSelectionGestureView (a descendant of the canvas):
+        // Zoom-state-aware suppression of PencilKit's finger selection / edit menu,
+        // Single Page only:
         //
-        //   2C  require(toFail:) — each selection tap is made to require OUR
-        //       double-tap to FAIL, so the reset double-tap always wins and the
-        //       menu never appears for a double-tap, at any zoom. Applied once
-        //       per recogniser instance (deduped via `linkedSelectionRecognizers`).
+        //   • At 100% (fit) the page is in normal editing mode — PencilKit's finger
+        //     selection / edit menu ("Select All / Insert Space") is ALLOWED and
+        //     left untouched.
+        //   • While zoomed (zoomScale > min) Single Page is in a NAVIGATION mode
+        //     (one finger pans, double-tap resets), so finger taps must not raise
+        //     PencilKit's selection / edit menu.
+        //   • That menu is hosted by PencilKit's private PKTiledView (its own
+        //     UIEditMenuInteraction), NOT by XmateCanvasView — so overriding the
+        //     canvas can't stop it. The trigger is the tap recognisers on the
+        //     private PKSelectionGestureView, so the fix acts there:
+        //       – 2C: each selection tap `require(toFail:)` our double-tap, so the
+        //         reset double-tap always wins (any zoom; deduped via the weak set);
+        //       – 2D: while zoomed those taps are disabled (isEnabled = false) and
+        //         restored at fit (isEnabled = true) — fully reversible.
+        //   • Apple Pencil drawing recognisers (PKDrawingGestureRecognizer on
+        //     PKTiledGestureView) and the pan / long-press recognisers are NEVER
+        //     touched, so Pencil ink, finger pan and pinch zoom are unaffected.
         //
-        //   2D  zoom-state suppression — while zoomed (zoomScale > min) the
-        //       selection taps are DISABLED (isEnabled = false), so a finger
-        //       single-tap can't raise the menu either; at fit they are restored
-        //       (isEnabled = true) so 100% behaviour is unchanged. Reversible —
-        //       the normal state is "enabled", so restore == enable.
-        //
-        // Re-applied on every relevant event (updateUIView, zoom-end, and zoom-
-        // threshold crossings) so recognisers PencilKit recreates on a relayout
-        // are re-coordinated. Never touches pan / long-press / the
-        // PKDrawingGestureRecognizer, so pan, pinch and Pencil ink are unaffected.
+        // Re-applied on updateUIView, zoom-end, and zoom-threshold crossings so
+        // recognisers PencilKit recreates on a relayout are re-coordinated.
         func refreshSelectionRecognizers() {
             guard let canvas, let ours = singlePageDoubleTap, let sv = scrollView else { return }
             let zoomed = sv.zoomScale > sv.minimumZoomScale + 0.0001
-            #if DEBUG
-            let transition = (zoomed != selectionSuppressed)
-            #endif
             selectionSuppressed = zoomed
-
-            var tapCount = 0
-            var newlyLinked = 0
-            walkSelectionTaps(in: canvas) { tap, hostName in
-                tapCount += 1
+            walkSelectionTaps(in: canvas) { tap, _ in
                 // 2C — failure link, once per recogniser instance.
                 if tap !== ours, !linkedSelectionRecognizers.contains(tap) {
                     tap.require(toFail: ours)               // PK tap waits for OUR double-tap
                     linkedSelectionRecognizers.add(tap)
-                    newlyLinked += 1
-                    #if DEBUG
-                    print("[DT-DIAG] require(toFail:) applied — \(String(describing: type(of: tap))) on \(hostName)")
-                    #endif
                 }
                 // 2D — disable finger taps while zoomed; restore at fit.
                 tap.isEnabled = !zoomed
             }
-            #if DEBUG
-            if transition {
-                print("[DT-DIAG] zoom-state CHANGED zoomed=\(zoomed) -> selection suppression \(zoomed ? "ACTIVE" : "INACTIVE")")
-            }
-            print("[DT-DIAG] refreshSelectionRecognizers zoomed=\(zoomed) zoomScale=\(String(format: "%.3f", sv.zoomScale)) min=\(String(format: "%.3f", sv.minimumZoomScale)) PKSelectionGestureView taps=\(tapCount) newlyLinked=\(newlyLinked) -> \(zoomed ? "SUPPRESSED (isEnabled=false)" : "RESTORED (isEnabled=true)")")
-            #endif
         }
 
         /// Visit every tap-like recogniser (UITapGestureRecognizer, or any whose
@@ -235,47 +208,6 @@ struct ZoomablePage: UIViewRepresentable {
             }
             for sub in root.subviews { walkSelectionTaps(in: sub, body) }
         }
-
-        #if DEBUG
-        // MARK: - DT-DIAG (temporary edit-menu diagnosis — remove after)
-
-        static func dtTimestamp() -> String {
-            String(format: "%9.3f", ProcessInfo.processInfo.systemUptime)
-        }
-
-        /// Log the double-tap firing, the hit-test view under the tap, and the
-        /// full canvas subtree (edit-menu interactions + gesture recognisers).
-        func dtLogDoubleTap(_ r: UITapGestureRecognizer, sv: UIScrollView) {
-            print("[DT-DIAG] \(Self.dtTimestamp()) ── Single double-tap FIRED state=\(r.state.rawValue) zoom=\(String(format: "%.3f", sv.zoomScale)) min=\(String(format: "%.3f", sv.minimumZoomScale))")
-            guard let c = canvas else { print("[DT-DIAG]   canvas=nil"); return }
-            let loc = r.location(in: c)
-            let hit = c.hitTest(loc, with: nil)
-            print("[DT-DIAG]   tapLoc=\(loc) hitTestView=\(hit.map { String(describing: type(of: $0)) } ?? "nil") canvas.isFR=\(c.isFirstResponder)")
-            dtDumpSubtree(c, tag: "at-tap")
-        }
-
-        /// Recursively log each subview: UIEditMenuInteraction hosts (+ delegate),
-        /// other UIInteractions, and gesture recognisers (class / state / enabled).
-        /// State rawValues: 0=possible 1=began 2=changed 3=ended/recognised
-        /// 4=cancelled 5=failed.
-        func dtDumpSubtree(_ root: UIView, tag: String, depth: Int = 0) {
-            let indent = String(repeating: "· ", count: depth)
-            let mark = (root === canvas) ? "CANVAS→" : ""
-            for em in root.interactions.compactMap({ $0 as? UIEditMenuInteraction }) {
-                let del = em.delegate.map { String(describing: type(of: $0)) } ?? "nil"
-                print("[DT-DIAG] \(tag) \(indent)\(mark)\(type(of: root)) d=\(depth) ★UIEditMenuInteraction delegate=\(del)")
-            }
-            let others = root.interactions.filter { !($0 is UIEditMenuInteraction) }
-            if !others.isEmpty {
-                print("[DT-DIAG] \(tag) \(indent)\(mark)\(type(of: root)) d=\(depth) interactions=[\(others.map { String(describing: type(of: $0)) }.joined(separator: ","))]")
-            }
-            if let grs = root.gestureRecognizers, !grs.isEmpty {
-                let desc = grs.map { "\(type(of: $0))(st=\($0.state.rawValue),en=\($0.isEnabled))" }.joined(separator: ", ")
-                print("[DT-DIAG] \(tag) \(indent)\(mark)\(type(of: root)) d=\(depth) GRs=[\(desc)]")
-            }
-            for sub in root.subviews { dtDumpSubtree(sub, tag: tag, depth: depth + 1) }
-        }
-        #endif
     }
 
     // MARK: UIViewRepresentable
