@@ -161,10 +161,13 @@ final class PageZoomModel: ObservableObject {
     /// passing a closure, so those views can stay `Equatable` and skip the
     /// per-frame re-render during zoom/pan.
     func resetAnimated() {
-        guard isZoomed else { return }
+        // TEMP DT-DIAG: Continuous reset path — pure SwiftUI scaleEffect change.
+        print("[DT-CONT] resetAnimated  isZoomed=\(isZoomed) userZoom=\(userZoom)")
+        guard isZoomed else { print("[DT-CONT] resetAnimated bailed (not zoomed)"); return }
         withAnimation(.easeOut(duration: 0.2)) {
             reset(flashHUD: true)
         }
+        print("[DT-CONT] resetAnimated done  userZoom=\(userZoom)  [PencilKit internals untouched]")
     }
 
     /// Back to 100% (fit). `flashHUD: true` shows "100%" briefly as feedback

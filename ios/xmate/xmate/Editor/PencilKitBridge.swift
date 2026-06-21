@@ -123,7 +123,17 @@ struct PencilKitBridge: UIViewRepresentable {
 
         @objc func handleSwipeForward()  { onSwipeForward?()  }
         @objc func handleSwipeBackward() { onSwipeBackward?() }
-        @objc func handleDoubleTap()     { onFingerDoubleTap?() }
+        @objc func handleDoubleTap() {
+            // TEMP DT-DIAG: compare Single vs Continuous double-tap-reset paths.
+            let ix = canvas.map { $0.interactions.map { String(describing: type(of: $0)) }.joined(separator: ",") } ?? "nil"
+            let gr = (canvas.flatMap { $0.gestureRecognizers })?.map { String(describing: type(of: $0)) }.joined(separator: ",") ?? "nil"
+            print("[DT-CONT] handleDoubleTap fired")
+            print("[DT-CONT]   canvas.interactions=[\(ix)]")
+            print("[DT-CONT]   canvas.recognizers=[\(gr)]")
+            print("[DT-CONT]   -> onFingerDoubleTap (SwiftUI transform reset; no native zoom)")
+            onFingerDoubleTap?()
+            print("[DT-CONT] handleDoubleTap returned")
+        }
 
         @objc func handleFingerPan(_ r: UIPanGestureRecognizer) {
             // translation(in: nil) returns window coordinates, which equal

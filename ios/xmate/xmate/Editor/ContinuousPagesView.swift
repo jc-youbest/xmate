@@ -280,7 +280,7 @@ struct ContinuousPagesView: View, Equatable {
                 // false → no UISwipeGestureRecognizers added
                 // (they fight the ScrollView pan)
                 enableSwipeNavigation: false,
-                onFingerDoubleTap: { zoom.resetAnimated() },
+                onFingerDoubleTap: { print("[DT-CONT] closure -> zoom.resetAnimated()"); zoom.resetAnimated() },  // TEMP DT-DIAG
                 fingerPanChanged: panChanged,
                 fingerPanEnded: panEnded
             )
