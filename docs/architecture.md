@@ -146,6 +146,52 @@ zoomed); a transient centered ZoomHUD reports the percentage and
 auto-fades. *Rejected:* free-panning / infinite canvas — xmate is
 bounded stationery, not a whiteboard.
 
+### Single Page zoomed edit-menu arbitration
+
+Single Page has two intentional finger-input states. At minimum zoom
+(100%), PencilKit selection remains available, including its **Select All /
+Insert Space** edit menu. Above minimum zoom, the page is navigation-first:
+finger input belongs to native `UIScrollView` pan/pinch and the app's
+double-tap reset, not to PencilKit selection.
+
+PencilKit hosts this menu in its private `PKTiledView`, with tap triggers on
+`PKSelectionGestureView`; it is not an `XmateCanvasView` responder-menu path.
+`ZoomablePage` therefore arbitrates at those selection tap recognizers. Each
+is made to require the app's finger double-tap reset recognizer to fail, so a
+reset wins, and the selection taps are disabled while zoomed above minimum
+then restored on return to minimum. The coordination is refreshed after
+PencilKit relayout because its private selection subtree may be recreated.
+Apple Pencil drawing recognizers are never touched.
+
+This changes only Single Page edit-menu arbitration. Its native
+`UIScrollView` zoom/pan is unchanged, and `ContinuousPagesView`, `PageZoom`,
+and `PencilKitBridge` are outside the fix. The rejected approaches and device
+evidence are recorded in `docs/lifecycle.md`.
+
+### Continuous native zoom/pan migration
+
+Continuous currently zooms by applying SwiftUI `scaleEffect` / `offset` to
+the complete page stack, driven by `PageZoomModel`. Because every finger-pan
+frame publishes `panOffset`, SwiftUI re-evaluates the enclosing screen and
+transforms the live multi-page hierarchy, including its persistent
+`PKCanvasView`s. This is a structural performance problem; tuning the pan math
+does not remove the high-frequency SwiftUI path.
+
+The selected prototype gives each Continuous page a persistent inner
+`UIScrollView`. At 100%, the outer Continuous scroll owns page navigation.
+Above minimum zoom, the outer scroll freezes and the current page's inner
+scroll owns native `zoomScale`, `contentOffset`, pinch, pan, deceleration, and
+bounce. The existing canvas remains the page's sole authoritative editor.
+Build this as a sibling Continuous path behind a feature flag, preserving the
+legacy path during device validation.
+
+*Rejected for the first prototype:* one native scroll view zooming the entire
+Continuous content stack. Although its gesture ownership is simpler, it zooms
+neighbouring pages and gaps with the current page and weakens the bounded-sheet
+model. Single Page is the stable reference and is not part of this migration;
+do not modify it or generalize `ZoomablePage` yet. Diagnosis is in
+`docs/lifecycle.md`; rollout order is in `roadmap.md` (F-059).
+
 ### Activation bootstrap
 
 The pagination views (SinglePagesView / ContinuousPagesView) declare the
