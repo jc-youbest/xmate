@@ -24,6 +24,7 @@ struct ContinuousNativePagesView: View {
     let restorePageIndex: Int
 
     private let gapPt: CGFloat = 20
+    @StateObject private var diagnostics = ContinuousNativeSessionDiagnostics()
 
     var body: some View {
         GeometryReader { proxy in
@@ -38,22 +39,32 @@ struct ContinuousNativePagesView: View {
                 gapPt: gapPt,
                 restorePageIndex: restorePageIndex,
                 scrollTarget: scrollTarget,
-                onCurrentPageChange: { newIndex in
-                    guard newIndex != currentPageIndex else { return }
-                    currentPageIndex = newIndex
+                diagnostics: diagnostics,
+                onCurrentPageChange: { report in
+                    diagnostics.recordPageReport(report)
+                    guard report.index != currentPageIndex else { return }
+                    currentPageIndex = report.index
                 },
                 onScrollTargetConsumed: onScrollTargetConsumed
             )
         }
         .background(Color(.systemGroupedBackground))
         .ignoresSafeArea(edges: .bottom)
-        .onAppear { syncDesiredActive() }
-        .onChange(of: currentPageIndex) { _, _ in syncDesiredActive() }
+        .onAppear { syncDesiredActive(reason: "entry") }
+        .onChange(of: currentPageIndex) { _, _ in
+            syncDesiredActive(reason: diagnostics.latestActiveContext)
+        }
+        .onDisappear { diagnostics.logSummary() }
     }
 
-    private func syncDesiredActive() {
+    private func syncDesiredActive(reason: String) {
         guard currentPageIndex >= 0, currentPageIndex < pages.count,
               let id = pages[currentPageIndex].id else { return }
+        diagnostics.logActiveRequest(index: currentPageIndex,
+                                     pageID: id,
+                                     reason: reason)
+        // No Pencil stroke begin/end state is currently tracked by the existing
+        // canvas/session path, so Stage 2.5 deliberately does not infer one.
         DrawingSessionManager.shared
             .setDesiredActive(pageID: id, role: .continuous)
     }
@@ -70,7 +81,8 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     let gapPt: CGFloat
     let restorePageIndex: Int
     let scrollTarget: UUID?
-    let onCurrentPageChange: (Int) -> Void
+    let diagnostics: ContinuousNativeSessionDiagnostics
+    let onCurrentPageChange: (ContinuousNativePageReport) -> Void
     let onScrollTargetConsumed: () -> Void
 
     func makeUIViewController(context: Context) -> ContinuousNativeScrollController {
@@ -108,7 +120,8 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
             store: store,
             viewport: viewport,
             fitScale: fitScale,
-            gapPt: gapPt
+            gapPt: gapPt,
+            diagnostics: diagnostics
         )
     }
 }
@@ -122,6 +135,7 @@ private struct ContinuousNativePageStack: View {
     let viewport: CGSize
     let fitScale: CGFloat
     let gapPt: CGFloat
+    let diagnostics: ContinuousNativeSessionDiagnostics
 
     var body: some View {
         let scaledW = paper.width * fitScale
@@ -131,7 +145,8 @@ private struct ContinuousNativePageStack: View {
             ForEach(pages, id: \.id) { page in
                 ContinuousNativePageHost(
                     page: page,
-                    store: store
+                    store: store,
+                    diagnostics: diagnostics
                 )
                 .frame(width: paper.width, height: paper.height)
                 .scaleEffect(fitScale)
@@ -154,11 +169,11 @@ private struct ContinuousNativePageStack: View {
 private struct ContinuousNativePageHost: UIViewRepresentable {
     let page: Page
     let store: NoteStore
+    let diagnostics: ContinuousNativeSessionDiagnostics
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         weak var canvas: XmateCanvasView?
         var isRegistered = false
-        var didLogReuse = false
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             guard let canvas = canvasView as? XmateCanvasView else { return }
@@ -171,6 +186,7 @@ private struct ContinuousNativePageHost: UIViewRepresentable {
     func makeUIView(context: Context) -> ContinuousNativeInnerScrollView {
         let inner = ContinuousNativeInnerScrollView()
         inner.pageID = page.id
+        inner.diagnostics = diagnostics
         inner.minimumZoomScale = 1.0
         inner.maximumZoomScale = 1.0
         inner.zoomScale = 1.0
@@ -208,9 +224,7 @@ private struct ContinuousNativePageHost: UIViewRepresentable {
         inner.pageCanvas = canvas
         context.coordinator.canvas = canvas
 
-        #if DEBUG
-        print("[CONT-INNER] host created page=\(shortPageID(page.id)) canvas=recreated")
-        #endif
+        diagnostics.hostCreated(pageID: page.id, canvas: canvas)
 
         return inner
     }
@@ -233,13 +247,9 @@ private struct ContinuousNativePageHost: UIViewRepresentable {
         canvas.pageID = page.id
         canvas.role = .continuous
         inner.pageID = page.id
+        inner.diagnostics = diagnostics
 
-        #if DEBUG
-        if !context.coordinator.didLogReuse {
-            context.coordinator.didLogReuse = true
-            print("[CONT-INNER] host update page=\(shortPageID(page.id)) canvas=reused")
-        }
-        #endif
+        diagnostics.hostReused(pageID: page.id, canvas: canvas)
 
         if !context.coordinator.isRegistered {
             DispatchQueue.main.async {
@@ -260,9 +270,6 @@ private struct ContinuousNativePageHost: UIViewRepresentable {
         }
     }
 
-    private func shortPageID(_ id: UUID?) -> String {
-        id.map { String($0.uuidString.prefix(4)) } ?? "----"
-    }
 }
 
 /// Inner page scroll host. At Stage 2 its pan must always fail so the enclosing
@@ -270,6 +277,7 @@ private struct ContinuousNativePageHost: UIViewRepresentable {
 private final class ContinuousNativeInnerScrollView: UIScrollView {
     var pageID: UUID?
     weak var pageCanvas: XmateCanvasView?
+    weak var diagnostics: ContinuousNativeSessionDiagnostics?
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -281,10 +289,9 @@ private final class ContinuousNativeInnerScrollView: UIScrollView {
         _ gestureRecognizer: UIGestureRecognizer
     ) -> Bool {
         if gestureRecognizer === panGestureRecognizer {
-            #if DEBUG
-            let shortID = pageID.map { String($0.uuidString.prefix(4)) } ?? "----"
-            print("[CONT-INNER] pan blocked at 100% page=\(shortID)")
-            #endif
+            diagnostics?.innerPanAttempt(pageID: pageID,
+                                         zoomScale: zoomScale,
+                                         allowed: false)
             return false
         }
         if gestureRecognizer === pinchGestureRecognizer {
@@ -292,6 +299,111 @@ private final class ContinuousNativeInnerScrollView: UIScrollView {
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
+}
+
+// MARK: - Stage 2.5 diagnostics
+
+private struct ContinuousNativePageReport {
+    let index: Int
+    let pageID: UUID
+    let rawIndex: CGFloat
+    let contentOffsetY: CGFloat
+    let isDragging: Bool
+    let isDecelerating: Bool
+}
+
+/// One counter set per lifetime of ContinuousNativePagesView. It is deliberately
+/// diagnostic-only: no counters participate in layout, routing, or activation.
+private final class ContinuousNativeSessionDiagnostics: ObservableObject {
+    private(set) var latestActiveContext = "initial"
+
+    #if DEBUG
+    private var createdByPage: [UUID: Int] = [:]
+    private var reusedByPage: [UUID: Int] = [:]
+    private var panAttemptsByPage: [UUID: Int] = [:]
+    private var lastReportedIndex: Int?
+    private var lastTransition: (from: Int, to: Int, time: TimeInterval)?
+    #endif
+
+    func hostCreated(pageID: UUID?, canvas: XmateCanvasView) {
+        #if DEBUG
+        guard let pageID else { return }
+        createdByPage[pageID, default: 0] += 1
+        let count = createdByPage[pageID, default: 0]
+        print("[CONT-HOST] page=\(shortID(pageID)) created=\(count) canvas=\(ObjectIdentifier(canvas)) recreated=\(count > 1)")
+        #endif
+    }
+
+    func hostReused(pageID: UUID?, canvas: XmateCanvasView) {
+        #if DEBUG
+        guard let pageID else { return }
+        reusedByPage[pageID, default: 0] += 1
+        let count = reusedByPage[pageID, default: 0]
+        if count == 1 {
+            print("[CONT-HOST] page=\(shortID(pageID)) reused=1 canvas=\(ObjectIdentifier(canvas))")
+        }
+        #endif
+    }
+
+    func innerPanAttempt(pageID: UUID?, zoomScale: CGFloat, allowed: Bool) {
+        #if DEBUG
+        guard let pageID else { return }
+        panAttemptsByPage[pageID, default: 0] += 1
+        let count = panAttemptsByPage[pageID, default: 0]
+        print("[CONT-INNER] panAttempt=\(count) page=\(shortID(pageID)) zoom=\(String(format: "%.2f", zoomScale)) allowed=\(allowed) owner=outer")
+        #endif
+    }
+
+    func recordPageReport(_ report: ContinuousNativePageReport) {
+        #if DEBUG
+        guard let from = lastReportedIndex else {
+            lastReportedIndex = report.index
+            latestActiveContext = "initial geometry"
+            return
+        }
+        guard from != report.index else { return }
+
+        let now = ProcessInfo.processInfo.systemUptime
+        let oscillating: Bool
+        if let lastTransition {
+            oscillating = lastTransition.from == report.index
+                && lastTransition.to == from
+                && now - lastTransition.time < 0.75
+        } else {
+            oscillating = false
+        }
+        let phase = report.isDragging ? "drag"
+            : (report.isDecelerating ? "deceleration" : "programmatic/layout")
+        latestActiveContext = oscillating ? "boundary oscillation" : "normal page crossing"
+        print("[CONT-ACTIVE] \(from)->\(report.index) page=\(shortID(report.pageID)) raw=\(String(format: "%.3f", report.rawIndex)) offsetY=\(Int(report.contentOffsetY)) phase=\(phase) oscillation=\(oscillating)")
+        lastTransition = (from, report.index, now)
+        lastReportedIndex = report.index
+        #endif
+    }
+
+    func logActiveRequest(index: Int, pageID: UUID, reason: String) {
+        #if DEBUG
+        print("[CONT-ACTIVE] setDesiredActive index=\(index) page=\(shortID(pageID)) reason=\(reason)")
+        #endif
+    }
+
+    func logSummary() {
+        #if DEBUG
+        let pageIDs = Set(createdByPage.keys)
+            .union(reusedByPage.keys)
+            .union(panAttemptsByPage.keys)
+            .sorted { $0.uuidString < $1.uuidString }
+        for pageID in pageIDs {
+            print("[CONT-HOST-SUMMARY] page=\(shortID(pageID)) created=\(createdByPage[pageID, default: 0]) reused=\(reusedByPage[pageID, default: 0]) panAttempts=\(panAttemptsByPage[pageID, default: 0])")
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private func shortID(_ id: UUID) -> String {
+        String(id.uuidString.prefix(4))
+    }
+    #endif
 }
 
 // MARK: - UIKit owner
@@ -305,7 +417,7 @@ private final class ContinuousNativeScrollController: UIViewController,
     private var pageHeight: CGFloat = 0
     private var gapPt: CGFloat = 0
     private var restorePageIndex: Int = 0
-    private var onCurrentPageChange: ((Int) -> Void)?
+    private var onCurrentPageChange: ((ContinuousNativePageReport) -> Void)?
 
     private var didRestoreInitialPosition = false
     private var lastReportedIndex: Int?
@@ -376,7 +488,7 @@ private final class ContinuousNativeScrollController: UIViewController,
                    pageHeight: CGFloat,
                    gapPt: CGFloat,
                    restorePageIndex: Int,
-                   onCurrentPageChange: @escaping (Int) -> Void) {
+                   onCurrentPageChange: @escaping (ContinuousNativePageReport) -> Void) {
         self.pageIDs = pageIDs
         self.pageHeight = pageHeight
         self.gapPt = gapPt
@@ -413,11 +525,19 @@ private final class ContinuousNativeScrollController: UIViewController,
         let index = max(0, min(pageIDs.count - 1, Int(raw.rounded())))
         guard force || index != lastReportedIndex else { return }
         lastReportedIndex = index
+        let report = ContinuousNativePageReport(
+            index: index,
+            pageID: pageIDs[index],
+            rawIndex: raw,
+            contentOffsetY: scrollView.contentOffset.y,
+            isDragging: scrollView.isDragging,
+            isDecelerating: scrollView.isDecelerating
+        )
         // Initial reporting can originate during UIKit layout. Defer the SwiftUI
         // binding write so it never mutates view state inside a representable
         // update/layout pass.
         DispatchQueue.main.async { [weak self] in
-            self?.onCurrentPageChange?(index)
+            self?.onCurrentPageChange?(report)
         }
     }
 
