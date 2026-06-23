@@ -180,7 +180,23 @@ struct WritingScreen: View {
                                 resetToken: zoomResetToken)
                     .equatable()
             case .continuous:
-                continuousArea
+                // Stage 0/1 only selects a sibling implementation and validates
+                // 100% layout/scroll parity; it does not provide native zoom.
+                // A legacy `[DT-CONT] ... SwiftUI transform reset; no native
+                // zoom` trace is therefore still expected until Stage 3.
+                if EditorFeatureFlags.continuousNativeZoomEnabled {
+                    continuousNativeArea
+                        .onAppear {
+                            logContinuousPath(
+                                "native prototype ContinuousNativePagesView"
+                            )
+                        }
+                } else {
+                    continuousArea
+                        .onAppear {
+                            logContinuousPath("legacy ContinuousPagesView")
+                        }
+                }
             }
         }
         .clipped()
@@ -228,6 +244,30 @@ struct WritingScreen: View {
                 .onChanged { zoom.pinchChanged($0) }
                 .onEnded { zoom.pinchEnded($0) }
         )
+    }
+
+    /// Stage 0/1 native Continuous prototype. It is a sibling path behind a
+    /// DEBUG-only feature flag and currently supports 100% scrolling only:
+    /// no pinch, zoomed pan, or inner page scroll views yet.
+    @ViewBuilder
+    private var continuousNativeArea: some View {
+        ContinuousNativePagesView(
+            pages: pages,
+            paper: paper,
+            store: store,
+            currentPageIndex: $currentPageIndex,
+            scrollTarget: scrollTarget,
+            onScrollTargetConsumed: { scrollTarget = nil },
+            restorePageIndex: currentPageIndex
+        )
+    }
+
+    /// Development trace for verifying the feature-flag route. Compiles to a
+    /// no-op in Release builds and has no effect on view or gesture behavior.
+    private func logContinuousPath(_ path: String) {
+        #if DEBUG
+        print("[CONT-PATH] \(path)")
+        #endif
     }
 
     // MARK: - Zoom reset
