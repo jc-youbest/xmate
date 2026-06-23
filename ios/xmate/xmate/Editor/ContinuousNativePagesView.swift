@@ -1,14 +1,16 @@
 // ContinuousNativePagesView — feature-flagged native Continuous prototype
 //
-// Stage 0/1 only: feature-flag routing plus 100% layout/scroll parity. A native
-// UIScrollView owns ordinary Continuous scrolling, while the persistent page
-// stack continues to use the existing PencilKitBridge / DrawingSessionManager
-// path. There is deliberately no native pinch zoom, zoomed pan, or inner page
-// UIScrollView yet; legacy "SwiftUI transform reset; no native zoom" tracing is
-// expected until Stage 3 adds native zoom.
+// Stage 2: feature-flag routing plus 100% layout/scroll parity, now with one
+// persistent inner UIScrollView host and one persistent XmateCanvasView per
+// page. Inner hosts are locked to zoomScale 1.0 and reject their pan gesture,
+// so the outer native UIScrollView remains the sole finger-scroll owner. There
+// is deliberately no native pinch zoom or zoomed one-finger pan yet; legacy
+// "SwiftUI transform reset; no native zoom" tracing remains expected until
+// Stage 3 adds native zoom.
 
 import SwiftUI
 import UIKit
+import PencilKit
 
 struct ContinuousNativePagesView: View {
     let pages: [Page]
@@ -127,11 +129,9 @@ private struct ContinuousNativePageStack: View {
 
         VStack(spacing: gapPt) {
             ForEach(pages, id: \.id) { page in
-                PencilKitBridge(
+                ContinuousNativePageHost(
                     page: page,
-                    store: store,
-                    role: .continuous,
-                    enableSwipeNavigation: false
+                    store: store
                 )
                 .frame(width: paper.width, height: paper.height)
                 .scaleEffect(fitScale)
@@ -143,6 +143,154 @@ private struct ContinuousNativePageStack: View {
         .padding(.vertical, gapPt)
         .frame(width: viewport.width)
         .background(Color(.systemGroupedBackground))
+    }
+}
+
+// MARK: - Persistent inner page host (Stage 2, zoom locked at 1.0)
+
+/// One stable native host per page ID. SwiftUI's surrounding `ForEach` is keyed
+/// by Page.id, so normal outer scrolling does not recreate this scroll view or
+/// its single canvas.
+private struct ContinuousNativePageHost: UIViewRepresentable {
+    let page: Page
+    let store: NoteStore
+
+    final class Coordinator: NSObject, PKCanvasViewDelegate {
+        weak var canvas: XmateCanvasView?
+        var isRegistered = false
+        var didLogReuse = false
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            guard let canvas = canvasView as? XmateCanvasView else { return }
+            DrawingSessionManager.shared.canvasDrawingChanged(canvas)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> ContinuousNativeInnerScrollView {
+        let inner = ContinuousNativeInnerScrollView()
+        inner.pageID = page.id
+        inner.minimumZoomScale = 1.0
+        inner.maximumZoomScale = 1.0
+        inner.zoomScale = 1.0
+        inner.bounces = false
+        inner.bouncesZoom = false
+        inner.showsVerticalScrollIndicator = false
+        inner.showsHorizontalScrollIndicator = false
+        inner.contentInsetAdjustmentBehavior = .never
+        inner.backgroundColor = .white
+        // Pinch is intentionally unavailable until Stage 3. The pan recognizer
+        // stays present only so the host can explicitly reject and trace any
+        // attempt to steal the outer scroll's 100% finger gesture.
+        inner.pinchGestureRecognizer?.isEnabled = false
+        inner.panGestureRecognizer.allowedTouchTypes = [
+            NSNumber(value: UITouch.TouchType.direct.rawValue)
+        ]
+
+        let canvas = XmateCanvasView()
+        canvas.backgroundColor = .white
+        canvas.isOpaque = true
+        canvas.overrideUserInterfaceStyle = .light
+        canvas.drawingPolicy = .pencilOnly
+        canvas.isScrollEnabled = false
+        canvas.bounces = false
+        canvas.tool = PKInkingTool(.pen, color: .black, width: 4)
+        canvas.delegate = context.coordinator
+        canvas.pageID = page.id
+        canvas.role = .continuous
+        if let data = page.drawingData,
+           let drawing = StrokeSerializer.decode(data) {
+            canvas.drawing = drawing
+        }
+
+        inner.addSubview(canvas)
+        inner.pageCanvas = canvas
+        context.coordinator.canvas = canvas
+
+        #if DEBUG
+        print("[CONT-INNER] host created page=\(shortPageID(page.id)) canvas=recreated")
+        #endif
+
+        return inner
+    }
+
+    func updateUIView(_ inner: ContinuousNativeInnerScrollView,
+                      context: Context) {
+        guard let canvas = context.coordinator.canvas else { return }
+
+        // The logical page remains 1:1 inside its host. The surrounding SwiftUI
+        // stack applies only the fit-scale visual transform used in Stage 0/1.
+        canvas.frame = inner.bounds
+        inner.contentSize = inner.bounds.size
+        inner.minimumZoomScale = 1.0
+        inner.maximumZoomScale = 1.0
+        if inner.zoomScale != 1.0 { inner.zoomScale = 1.0 }
+        inner.pinchGestureRecognizer?.isEnabled = false
+
+        canvas.drawingPolicy = .pencilOnly
+        canvas.isScrollEnabled = false
+        canvas.pageID = page.id
+        canvas.role = .continuous
+        inner.pageID = page.id
+
+        #if DEBUG
+        if !context.coordinator.didLogReuse {
+            context.coordinator.didLogReuse = true
+            print("[CONT-INNER] host update page=\(shortPageID(page.id)) canvas=reused")
+        }
+        #endif
+
+        if !context.coordinator.isRegistered {
+            DispatchQueue.main.async {
+                guard canvas.window != nil,
+                      !context.coordinator.isRegistered else { return }
+                context.coordinator.isRegistered = true
+                DrawingSessionManager.shared
+                    .register(canvas, role: .continuous, visible: true)
+            }
+        }
+    }
+
+    static func dismantleUIView(_ inner: ContinuousNativeInnerScrollView,
+                                coordinator: Coordinator) {
+        if coordinator.isRegistered, let canvas = coordinator.canvas {
+            DrawingSessionManager.shared.unregister(canvas)
+            coordinator.isRegistered = false
+        }
+    }
+
+    private func shortPageID(_ id: UUID?) -> String {
+        id.map { String($0.uuidString.prefix(4)) } ?? "----"
+    }
+}
+
+/// Inner page scroll host. At Stage 2 its pan must always fail so the enclosing
+/// Continuous scroll view receives normal vertical finger navigation.
+private final class ContinuousNativeInnerScrollView: UIScrollView {
+    var pageID: UUID?
+    weak var pageCanvas: XmateCanvasView?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        pageCanvas?.frame = bounds
+        contentSize = bounds.size
+    }
+
+    override func gestureRecognizerShouldBegin(
+        _ gestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        if gestureRecognizer === panGestureRecognizer {
+            #if DEBUG
+            let shortID = pageID.map { String($0.uuidString.prefix(4)) } ?? "----"
+            print("[CONT-INNER] pan blocked at 100% page=\(shortID)")
+            #endif
+            return false
+        }
+        if gestureRecognizer === pinchGestureRecognizer {
+            return false
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 }
 
