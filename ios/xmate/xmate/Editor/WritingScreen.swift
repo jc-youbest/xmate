@@ -88,6 +88,7 @@ struct WritingScreen: View {
     /// One-way reset signal for Single Page (UIScrollView zoom): bumping it
     /// tells the current page's ZoomablePage to zoom back to fit.
     @State private var zoomResetToken: Int = 0
+    @State private var continuousNativeZoomResetToken: Int = 0
 
     @State private var showDeletePageAlert: Bool = false
     @State private var showDeleteDocumentAlert: Bool = false
@@ -263,7 +264,9 @@ struct WritingScreen: View {
             scrollTarget: scrollTarget,
             onScrollTargetConsumed: { scrollTarget = nil },
             restorePageIndex: currentPageIndex,
-            zoomPrototype: prototype
+            zoomPrototype: prototype,
+            resetToken: continuousNativeZoomResetToken,
+            onZoomChange: prototype == .stack ? { zoom.setDisplayZoom($0) } : nil
         )
     }
 
@@ -285,6 +288,11 @@ struct WritingScreen: View {
         case .singlePage:
             zoomResetToken &+= 1
         case .continuous:
+            if EditorFeatureFlags.continuousNativeZoomEnabled,
+               EditorFeatureFlags.continuousNativeZoomPrototype == .stack {
+                continuousNativeZoomResetToken &+= 1
+                return
+            }
             guard zoom.isZoomed else { return }
             withAnimation(.easeOut(duration: 0.2)) {
                 zoom.reset(flashHUD: true)

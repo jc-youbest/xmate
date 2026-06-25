@@ -23,6 +23,8 @@ struct ContinuousNativePagesView: View {
     let onScrollTargetConsumed: () -> Void
     let restorePageIndex: Int
     let zoomPrototype: ContinuousNativeZoomPrototype
+    let resetToken: Int
+    let onZoomChange: ((CGFloat) -> Void)?
 
     private let gapPt: CGFloat = 20
     @StateObject private var diagnostics = ContinuousNativeSessionDiagnostics()
@@ -41,6 +43,8 @@ struct ContinuousNativePagesView: View {
                 restorePageIndex: restorePageIndex,
                 scrollTarget: scrollTarget,
                 zoomPrototype: zoomPrototype,
+                resetToken: resetToken,
+                onZoomChange: onZoomChange,
                 diagnostics: diagnostics,
                 onCurrentPageChange: { report in
                     let displayedChanged = report.index != currentPageIndex
@@ -93,6 +97,8 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     let restorePageIndex: Int
     let scrollTarget: UUID?
     let zoomPrototype: ContinuousNativeZoomPrototype
+    let resetToken: Int
+    let onZoomChange: ((CGFloat) -> Void)?
     let diagnostics: ContinuousNativeSessionDiagnostics
     let onCurrentPageChange: (ContinuousNativePageReport) -> Void
     let onScrollTargetConsumed: () -> Void
@@ -102,13 +108,15 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
         let controller = ContinuousNativeScrollController(
             content: content,
             diagnostics: diagnostics,
-            zoomPrototype: zoomPrototype
+            zoomPrototype: zoomPrototype,
+            onZoomChange: onZoomChange
         )
         controller.configure(
             pageIDs: pages.compactMap(\.id),
             pageHeight: paper.height * fitScale,
             gapPt: gapPt,
             restorePageIndex: restorePageIndex,
+            resetToken: resetToken,
             onCurrentPageChange: onCurrentPageChange
         )
         return controller
@@ -122,6 +130,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
             pageHeight: paper.height * fitScale,
             gapPt: gapPt,
             restorePageIndex: restorePageIndex,
+            resetToken: resetToken,
             onCurrentPageChange: onCurrentPageChange
         )
         controller.handleScrollTarget(scrollTarget) {
@@ -707,7 +716,10 @@ private final class ContinuousNativeScrollController: UIViewController,
     private var pageHeight: CGFloat = 0
     private var gapPt: CGFloat = 0
     private var restorePageIndex: Int = 0
+    private var resetToken: Int = 0
+    private var lastHandledResetToken: Int = 0
     private var onCurrentPageChange: ((ContinuousNativePageReport) -> Void)?
+    private var onZoomChange: ((CGFloat) -> Void)?
 
     private var didRestoreInitialPosition = false
     private var lastReportedIndex: Int?
@@ -730,10 +742,12 @@ private final class ContinuousNativeScrollController: UIViewController,
 
     init(content: ContinuousNativePageStack,
          diagnostics: ContinuousNativeSessionDiagnostics,
-         zoomPrototype: ContinuousNativeZoomPrototype) {
+         zoomPrototype: ContinuousNativeZoomPrototype,
+         onZoomChange: ((CGFloat) -> Void)?) {
         host = UIHostingController(rootView: content)
         self.diagnostics = diagnostics
         self.zoomPrototype = zoomPrototype
+        self.onZoomChange = onZoomChange
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -848,6 +862,7 @@ private final class ContinuousNativeScrollController: UIViewController,
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         guard zoomPrototype == .stack else { return }
+        reportStackZoomDisplay(scrollView.zoomScale)
         #if DEBUG
         print("[CONT-STACK-ZOOM] changed scale=\(String(format: "%.3f", scrollView.zoomScale))")
         #endif
@@ -903,7 +918,7 @@ private final class ContinuousNativeScrollController: UIViewController,
         #if DEBUG
         print("[CONT-STACK-RESET] setZoomScale 1.0 animated=true")
         #endif
-        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+        resetStackZoomAnimated()
     }
 
     func gestureRecognizer(
@@ -928,6 +943,7 @@ private final class ContinuousNativeScrollController: UIViewController,
 
     private func releaseStackZoomTrackingAndReport() {
         scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
+        reportStackZoomDisplay(scrollView.minimumZoomScale)
         stackZoomAnchorIndex = nil
         if stackTrackingFrozen {
             stackTrackingFrozen = false
@@ -937,6 +953,30 @@ private final class ContinuousNativeScrollController: UIViewController,
         }
         // Reconcile the page once native zoom has fully returned to 1x.
         reportCurrentPage(force: true)
+    }
+
+    private func resetStackZoomAnimated() {
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+    }
+
+    private func reportStackZoomDisplay(_ scale: CGFloat) {
+        guard zoomPrototype == .stack else { return }
+        let minScale = max(scrollView.minimumZoomScale, 0.0001)
+        let multiple = (scale / minScale)
+            .clamped(to: PageZoomModel.minZoom...PageZoomModel.maxZoom)
+        onZoomChange?(multiple)
+    }
+
+    private func handleResetTokenIfNeeded() {
+        guard zoomPrototype == .stack else { return }
+        guard resetToken != lastHandledResetToken else { return }
+        lastHandledResetToken = resetToken
+        guard scrollView.zoomScale > scrollView.minimumZoomScale + 0.0001 else {
+            reportStackZoomDisplay(scrollView.minimumZoomScale)
+            return
+        }
+        stackResetInProgress = true
+        resetStackZoomAnimated()
     }
 
     private func refreshStackSelectionRecognizersIfNeeded(
@@ -977,12 +1017,15 @@ private final class ContinuousNativeScrollController: UIViewController,
                    pageHeight: CGFloat,
                    gapPt: CGFloat,
                    restorePageIndex: Int,
+                   resetToken: Int,
                    onCurrentPageChange: @escaping (ContinuousNativePageReport) -> Void) {
         self.pageIDs = pageIDs
         self.pageHeight = pageHeight
         self.gapPt = gapPt
         self.restorePageIndex = restorePageIndex
+        self.resetToken = resetToken
         self.onCurrentPageChange = onCurrentPageChange
+        handleResetTokenIfNeeded()
     }
 
     func handleScrollTarget(_ target: UUID?, consumed: @escaping () -> Void) {
