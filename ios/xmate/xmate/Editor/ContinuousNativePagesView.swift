@@ -494,6 +494,55 @@ private final class ContinuousNativeSessionDiagnostics: ObservableObject {
         latestActiveContext = "initial"
     }
 
+    func refreshStackSelectionRecognizers(
+        stackDoubleTap: UITapGestureRecognizer?,
+        linkedRecognizers: NSHashTable<UIGestureRecognizer>,
+        zoomed: Bool
+    ) {
+        guard let stackDoubleTap else { return }
+        for host in innerHosts.values {
+            guard let canvas = host.value?.pageCanvas else { continue }
+            walkSelectionTaps(in: canvas) { tap, hostName in
+                #if DEBUG
+                print("[CONT-STACK-MENU] found \(hostName)")
+                #endif
+                if tap !== stackDoubleTap,
+                   !linkedRecognizers.contains(tap) {
+                    tap.require(toFail: stackDoubleTap)
+                    linkedRecognizers.add(tap)
+                    #if DEBUG
+                    print("[CONT-STACK-MENU] selection tap requireToFail stackDoubleTap")
+                    #endif
+                }
+                tap.isEnabled = !zoomed
+            }
+        }
+        #if DEBUG
+        if zoomed {
+            print("[CONT-STACK-MENU] suppress selection taps zoomed=true")
+        } else {
+            print("[CONT-STACK-MENU] restore selection taps zoomed=false")
+        }
+        #endif
+    }
+
+    private func walkSelectionTaps(in root: UIView,
+                                   _ body: (UIGestureRecognizer, String) -> Void) {
+        let hostName = String(describing: type(of: root))
+        if hostName.contains("PKSelectionGestureView"),
+           let recognizers = root.gestureRecognizers {
+            for recognizer in recognizers {
+                let name = String(describing: type(of: recognizer))
+                if recognizer is UITapGestureRecognizer || name.contains("Tap") {
+                    body(recognizer, hostName)
+                }
+            }
+        }
+        for subview in root.subviews {
+            walkSelectionTaps(in: subview, body)
+        }
+    }
+
     func shouldBeginZoom(_ pageID: UUID?) -> Bool {
         guard let pageID else { return false }
         let allowed = pageID == currentPageID
@@ -649,7 +698,8 @@ private final class WeakContinuousInnerHost {
 // MARK: - UIKit owner
 
 private final class ContinuousNativeScrollController: UIViewController,
-                                                      UIScrollViewDelegate {
+                                                      UIScrollViewDelegate,
+                                                      UIGestureRecognizerDelegate {
     private let scrollView = UIScrollView()
     private let host: UIHostingController<ContinuousNativePageStack>
 
@@ -664,6 +714,11 @@ private final class ContinuousNativeScrollController: UIViewController,
     private var handledScrollTarget: UUID?
     private var stackZoomAnchorIndex: Int?
     private var stackTrackingFrozen = false
+    private var stackResetInProgress = false
+    private var stackDoubleTapReset: UITapGestureRecognizer?
+    private let linkedStackSelectionRecognizers =
+        NSHashTable<UIGestureRecognizer>.weakObjects()
+    private var stackMenuSuppressionState: Bool?
     private var didLogStackZoomView = false
     /// Stateful displayed-page tracker for Design B. A page transition must
     /// clear the midpoint by this fraction of one page stride.
@@ -713,6 +768,23 @@ private final class ContinuousNativeScrollController: UIViewController,
         // Two fingers belong exclusively to the current inner page's native
         // pinch recognizer; the outer scroll remains a one-finger navigator.
         scrollView.panGestureRecognizer.maximumNumberOfTouches = 1
+
+        if zoomPrototype == .stack {
+            let resetTap = UITapGestureRecognizer(
+                target: self,
+                action: #selector(handleStackDoubleTapReset(_:))
+            )
+            resetTap.numberOfTapsRequired = 2
+            resetTap.numberOfTouchesRequired = 1
+            resetTap.allowedTouchTypes = [
+                NSNumber(value: UITouch.TouchType.direct.rawValue)
+            ]
+            resetTap.cancelsTouchesInView = true
+            resetTap.delaysTouchesBegan = true
+            resetTap.delegate = self
+            scrollView.addGestureRecognizer(resetTap)
+            stackDoubleTapReset = resetTap
+        }
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -785,6 +857,12 @@ private final class ContinuousNativeScrollController: UIViewController,
             print("[CONT-STACK-ZOOM] current tracking frozen")
             #endif
         }
+        refreshStackSelectionRecognizersIfNeeded(
+            zoomed: scrollView.zoomScale > 1.0001
+        )
+        if stackResetInProgress, scrollView.zoomScale <= 1.0001 {
+            completeStackResetIfNeeded()
+        }
     }
 
     func scrollViewDidEndZooming(_ scrollView: UIScrollView,
@@ -796,7 +874,60 @@ private final class ContinuousNativeScrollController: UIViewController,
         #endif
         guard scale <= 1.0001 else { return }
 
-        scrollView.setZoomScale(1.0, animated: false)
+        if stackResetInProgress {
+            completeStackResetIfNeeded()
+            return
+        }
+        refreshStackSelectionRecognizersIfNeeded(zoomed: false, force: true)
+        releaseStackZoomTrackingAndReport()
+    }
+
+    @objc private func handleStackDoubleTapReset(
+        _ recognizer: UITapGestureRecognizer
+    ) {
+        guard zoomPrototype == .stack,
+              recognizer.state == .recognized else { return }
+
+        #if DEBUG
+        print("[CONT-STACK-RESET] doubleTap received scale=\(String(format: "%.3f", scrollView.zoomScale))")
+        #endif
+
+        guard scrollView.zoomScale > scrollView.minimumZoomScale + 0.0001 else {
+            #if DEBUG
+            print("[CONT-STACK-RESET] ignored at minimum")
+            #endif
+            return
+        }
+
+        stackResetInProgress = true
+        #if DEBUG
+        print("[CONT-STACK-RESET] setZoomScale 1.0 animated=true")
+        #endif
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldReceive touch: UITouch
+    ) -> Bool {
+        if gestureRecognizer is UITapGestureRecognizer {
+            return zoomPrototype == .stack && touch.type == .direct
+        }
+        return true
+    }
+
+    private func completeStackResetIfNeeded() {
+        guard stackResetInProgress else { return }
+        stackResetInProgress = false
+        #if DEBUG
+        print("[CONT-STACK-RESET] completed scale=\(String(format: "%.3f", scrollView.zoomScale))")
+        #endif
+        refreshStackSelectionRecognizersIfNeeded(zoomed: false, force: true)
+        releaseStackZoomTrackingAndReport()
+    }
+
+    private func releaseStackZoomTrackingAndReport() {
+        scrollView.setZoomScale(scrollView.minimumZoomScale, animated: false)
         stackZoomAnchorIndex = nil
         if stackTrackingFrozen {
             stackTrackingFrozen = false
@@ -806,6 +937,20 @@ private final class ContinuousNativeScrollController: UIViewController,
         }
         // Reconcile the page once native zoom has fully returned to 1x.
         reportCurrentPage(force: true)
+    }
+
+    private func refreshStackSelectionRecognizersIfNeeded(
+        zoomed: Bool,
+        force: Bool = false
+    ) {
+        guard zoomPrototype == .stack else { return }
+        guard force || stackMenuSuppressionState != zoomed else { return }
+        stackMenuSuppressionState = zoomed
+        diagnostics.refreshStackSelectionRecognizers(
+            stackDoubleTap: stackDoubleTapReset,
+            linkedRecognizers: linkedStackSelectionRecognizers,
+            zoomed: zoomed
+        )
     }
 
     override func viewDidLayoutSubviews() {
@@ -819,6 +964,13 @@ private final class ContinuousNativeScrollController: UIViewController,
 
     func updateContent(_ content: ContinuousNativePageStack) {
         host.rootView = content
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.refreshStackSelectionRecognizersIfNeeded(
+                zoomed: self.scrollView.zoomScale > 1.0001,
+                force: true
+            )
+        }
     }
 
     func configure(pageIDs: [UUID],
