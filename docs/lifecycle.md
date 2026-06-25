@@ -237,14 +237,15 @@ the enclosing multi-page hierarchy and its persistent canvases. Single Page
 does not use this path: its `UIScrollView` owns `zoomScale` and `contentOffset`
 inside UIKit.
 
-**Decision.** Prototype persistent inner native scroll views per Continuous
-page behind a feature flag; freeze the outer scroll while the current inner
-page is zoomed. Preserve the same canvas identity, active-page handoff,
-ToolPicker ownership, and Pencil-only drawing. A single native scroll zooming
-the whole stack was rejected for the first prototype because it compromises
-bounded-page semantics. The settled design is in `architecture.md`; staged
+**Device finding and decision.** Persistent per-page native zoom was smooth,
+but failed Continuous viewport semantics: with two half-pages visible, only
+the current half zoomed and the other half became inert while the outer scroll
+was frozen. Pause that design before gesture/reset work. The next candidate is
+native outer-scroll zoom of the persistent stack, later constrained to the
+page group visible at pinch start. Keep both native variants behind DEBUG A/B
+routing during evaluation. The settled direction is in `architecture.md`;
 delivery is F-059 in `roadmap.md`. Single Page and `ZoomablePage` remain
-untouched until the Continuous path independently passes device acceptance.
+untouched.
 
 ### Single Page zoomed edit menu during double-tap reset — STATUS: RESOLVED (2026-06)
 

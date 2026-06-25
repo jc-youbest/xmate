@@ -163,12 +163,12 @@ ones here. Gaps are normal (withdrawn IDs).
 Next Editor increment (current priority), in order:
 
 - F-059 Continuous native zoom/pan — replace the laggy per-frame SwiftUI
-  stack transform with a feature-flagged sibling path: first reproduce the
-  100% Continuous shell, then add persistent inner page `UIScrollView`s,
-  native pinch, outer/inner gesture arbitration, reset, zoomed edit-menu
-  arbitration, page mutations/navigation, and device acceptance. Single Page
-  is the stable native reference; do not modify it or generalize
-  `ZoomablePage` during the prototype. Polishes F-053.
+  stack transform with a feature-flagged sibling path. Per-page native zoom
+  proved smooth but failed two-half-page viewport semantics; retain it only for
+  A/B comparison. Prototype outer native stack zoom next, then add bounded
+  visible-page-session constraints, reset, edit-menu arbitration,
+  mutations/navigation, and device acceptance. Single Page remains untouched.
+  Polishes F-053.
 - F-060 Top-bar buttons dead while zoomed — when zoomed, taps on
   WritingTopBar do nothing (Add Page, overflow menu) and instead raise the
   PKCanvasView edit callout ("Select All / Insert Space"): the zoomed canvas

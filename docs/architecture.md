@@ -177,20 +177,20 @@ transforms the live multi-page hierarchy, including its persistent
 `PKCanvasView`s. This is a structural performance problem; tuning the pan math
 does not remove the high-frequency SwiftUI path.
 
-The selected prototype gives each Continuous page a persistent inner
-`UIScrollView`. At 100%, the outer Continuous scroll owns page navigation.
-Above minimum zoom, the outer scroll freezes and the current page's inner
-scroll owns native `zoomScale`, `contentOffset`, pinch, pan, deceleration, and
-bounce. The existing canvas remains the page's sole authoritative editor.
-Build this as a sibling Continuous path behind a feature flag, preserving the
-legacy path during device validation.
+The candidate design uses the outer native `UIScrollView` as zoom owner for
+the persistent Continuous stack, so every page fragment and gap visible in the
+viewport scales together without per-frame SwiftUI state. A later increment
+will bound each zoom session to the page group visible when the pinch begins;
+whole-document free zoom is not the product model. Keep this as a sibling path
+behind a feature flag until device acceptance.
 
-*Rejected for the first prototype:* one native scroll view zooming the entire
-Continuous content stack. Although its gesture ownership is simpler, it zooms
-neighbouring pages and gaps with the current page and weakens the bounded-sheet
-model. Single Page is the stable reference and is not part of this migration;
-do not modify it or generalize `ZoomablePage` yet. Diagnosis is in
-`docs/lifecycle.md`; rollout order is in `roadmap.md` (F-059).
+*Rejected as the final Continuous design:* persistent inner zoom scroll views
+per page. Device testing proved that path smooth, but when the viewport showed
+two half-pages it enlarged only one half and left the other inert. It remains
+available only as an A/B comparison prototype. Single Page is the stable
+reference and is not part of this migration; do not modify it or generalize
+`ZoomablePage` yet. Diagnosis is in `docs/lifecycle.md`; rollout order is in
+`roadmap.md` (F-059).
 
 ### Activation bootstrap
 

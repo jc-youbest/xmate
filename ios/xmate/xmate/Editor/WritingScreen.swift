@@ -180,17 +180,19 @@ struct WritingScreen: View {
                                 resetToken: zoomResetToken)
                     .equatable()
             case .continuous:
-                // Stage 0/1 only selects a sibling implementation and validates
-                // 100% layout/scroll parity; it does not provide native zoom.
-                // A legacy `[DT-CONT] ... SwiftUI transform reset; no native
-                // zoom` trace is therefore still expected until Stage 3.
                 if EditorFeatureFlags.continuousNativeZoomEnabled {
-                    continuousNativeArea
-                        .onAppear {
-                            logContinuousPath(
-                                "native prototype ContinuousNativePagesView"
-                            )
-                        }
+                    switch EditorFeatureFlags.continuousNativeZoomPrototype {
+                    case .perPage:
+                        continuousNativeArea(.perPage)
+                            .onAppear {
+                                logContinuousPath("native prototype perPage")
+                            }
+                    case .stack:
+                        continuousNativeArea(.stack)
+                            .onAppear {
+                                logContinuousPath("native prototype stack")
+                            }
+                    }
                 } else {
                     continuousArea
                         .onAppear {
@@ -246,11 +248,13 @@ struct WritingScreen: View {
         )
     }
 
-    /// Stage 0/1 native Continuous prototype. It is a sibling path behind a
-    /// DEBUG-only feature flag and currently supports 100% scrolling only:
-    /// no pinch, zoomed pan, or inner page scroll views yet.
+    /// Native Continuous A/B prototype. `.perPage` preserves the smooth Design A
+    /// experiment; `.stack` prepares the outer native scroll as the future zoom
+    /// owner while remaining locked at 1x in this increment.
     @ViewBuilder
-    private var continuousNativeArea: some View {
+    private func continuousNativeArea(
+        _ prototype: ContinuousNativeZoomPrototype
+    ) -> some View {
         ContinuousNativePagesView(
             pages: pages,
             paper: paper,
@@ -258,7 +262,8 @@ struct WritingScreen: View {
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
             onScrollTargetConsumed: { scrollTarget = nil },
-            restorePageIndex: currentPageIndex
+            restorePageIndex: currentPageIndex,
+            zoomPrototype: prototype
         )
     }
 
