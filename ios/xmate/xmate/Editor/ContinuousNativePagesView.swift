@@ -35,6 +35,7 @@ struct ContinuousNativePagesView: View {
 
     private let gapPt: CGFloat = 20
     @StateObject private var diagnostics = ContinuousNativeSessionDiagnostics()
+    @State private var suppressNextActiveSync = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -60,6 +61,9 @@ struct ContinuousNativePagesView: View {
                         displayedChanged: displayedChanged
                     )
                     guard displayedChanged else { return }
+                    if report.suppressesActivePromotion {
+                        suppressNextActiveSync = true
+                    }
                     currentPageIndex = report.index
                 },
                 onScrollTargetConsumed: onScrollTargetConsumed
@@ -69,6 +73,11 @@ struct ContinuousNativePagesView: View {
         .ignoresSafeArea(edges: .bottom)
         .onAppear { syncDesiredActive(reason: "entry") }
         .onChange(of: currentPageIndex) { _, _ in
+            if suppressNextActiveSync {
+                suppressNextActiveSync = false
+                diagnostics.logZoomedDisplayIgnoredActivePromotion()
+                return
+            }
             syncDesiredActive(reason: diagnostics.latestActiveContext)
         }
         .onDisappear {
@@ -419,6 +428,7 @@ private struct ContinuousNativePageReport {
     let contentOffsetY: CGFloat
     let isDragging: Bool
     let isDecelerating: Bool
+    let suppressesActivePromotion: Bool
 }
 
 /// One counter set per lifetime of ContinuousNativePagesView. It is deliberately
@@ -697,6 +707,12 @@ private final class ContinuousNativeSessionDiagnostics: ObservableObject {
         #endif
     }
 
+    func logZoomedDisplayIgnoredActivePromotion() {
+        #if DEBUG
+        print("[CONT-ZOOM-PAGE] ignored active promotion zoomed=true")
+        #endif
+    }
+
     func logSummary() {
         #if DEBUG
         let pageIDs = Set(createdByPage.keys)
@@ -905,6 +921,7 @@ private final class ContinuousNativeScrollController: UIViewController,
         refreshStackSelectionRecognizersIfNeeded(
             zoomed: scrollView.zoomScale > 1.0001
         )
+        reportZoomedDisplayedPage()
         if stackResetInProgress, scrollView.zoomScale <= 1.0001 {
             completeStackResetIfNeeded()
         }
@@ -1083,9 +1100,44 @@ private final class ContinuousNativeScrollController: UIViewController,
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard didRestoreInitialPosition else { return }
         if zoomPrototype == .stack, scrollView.zoomScale > 1.0001 {
+            reportZoomedDisplayedPage()
             return
         }
         reportCurrentPage()
+    }
+
+    private func reportZoomedDisplayedPage() {
+        guard zoomPrototype == .stack,
+              !pageIDs.isEmpty,
+              pageHeight > 0,
+              scrollView.zoomScale > 1.0001 else { return }
+
+        let viewportCenterYInContent =
+            (scrollView.contentOffset.y + scrollView.bounds.height / 2)
+            / scrollView.zoomScale
+        let stride = pageHeight + gapPt
+        let raw = (viewportCenterYInContent - gapPt - pageHeight / 2) / stride
+        let index = max(0, min(pageIDs.count - 1, Int(raw.rounded())))
+        guard index != lastReportedIndex else { return }
+
+        let previous = lastReportedIndex
+        lastReportedIndex = index
+        #if DEBUG
+        print("[CONT-ZOOM-PAGE] zoomed display changed previous=\(previous.map(String.init) ?? "nil") next=\(index) raw=\(String(format: "%.3f", raw)) scale=\(String(format: "%.3f", scrollView.zoomScale))")
+        #endif
+
+        let report = ContinuousNativePageReport(
+            index: index,
+            pageID: pageIDs[index],
+            rawIndex: raw,
+            contentOffsetY: scrollView.contentOffset.y,
+            isDragging: scrollView.isDragging,
+            isDecelerating: scrollView.isDecelerating,
+            suppressesActivePromotion: true
+        )
+        DispatchQueue.main.async { [weak self] in
+            self?.onCurrentPageChange?(report)
+        }
     }
 
     private func reportCurrentPage(force: Bool = false) {
@@ -1111,7 +1163,8 @@ private final class ContinuousNativeScrollController: UIViewController,
             rawIndex: raw,
             contentOffsetY: scrollView.contentOffset.y,
             isDragging: scrollView.isDragging,
-            isDecelerating: scrollView.isDecelerating
+            isDecelerating: scrollView.isDecelerating,
+            suppressesActivePromotion: false
         )
         // Initial reporting can originate during UIKit layout. Defer the SwiftUI
         // binding write so it never mutates view state inside a representable
