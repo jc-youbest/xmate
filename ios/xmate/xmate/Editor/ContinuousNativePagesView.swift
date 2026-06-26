@@ -12,6 +12,13 @@ import SwiftUI
 import UIKit
 import PencilKit
 
+#if DEBUG
+/// Flip to `true` temporarily when chasing per-frame Continuous native zoom,
+/// hysteresis, or PencilKit private-recognizer timing. Keep `false` for normal
+/// device testing so logs stay readable enough to judge performance.
+private let continuousNativeVerboseDiagnostics = false
+#endif
+
 struct ContinuousNativePagesView: View {
     let pages: [Page]
     let paper: PaperSize
@@ -429,6 +436,9 @@ private final class ContinuousNativeSessionDiagnostics: ObservableObject {
     private var createdByPage: [UUID: Int] = [:]
     private var reusedByPage: [UUID: Int] = [:]
     private var panAttemptsByPage: [UUID: Int] = [:]
+    private var menuRefreshCount = 0
+    private var menuVisitedTapCount = 0
+    private var menuLinkedTapCount = 0
     #endif
 
     func hostCreated(pageID: UUID?, canvas: XmateCanvasView) {
@@ -509,28 +519,35 @@ private final class ContinuousNativeSessionDiagnostics: ObservableObject {
         zoomed: Bool
     ) {
         guard let stackDoubleTap else { return }
+        #if DEBUG
+        var visited = 0
+        var linked = 0
+        #endif
         for host in innerHosts.values {
             guard let canvas = host.value?.pageCanvas else { continue }
-            walkSelectionTaps(in: canvas) { tap, hostName in
+            walkSelectionTaps(in: canvas) { tap, _ in
                 #if DEBUG
-                print("[CONT-STACK-MENU] found \(hostName)")
+                visited += 1
                 #endif
                 if tap !== stackDoubleTap,
                    !linkedRecognizers.contains(tap) {
                     tap.require(toFail: stackDoubleTap)
                     linkedRecognizers.add(tap)
                     #if DEBUG
-                    print("[CONT-STACK-MENU] selection tap requireToFail stackDoubleTap")
+                    linked += 1
                     #endif
                 }
                 tap.isEnabled = !zoomed
             }
         }
         #if DEBUG
-        if zoomed {
-            print("[CONT-STACK-MENU] suppress selection taps zoomed=true")
-        } else {
-            print("[CONT-STACK-MENU] restore selection taps zoomed=false")
+        menuRefreshCount += 1
+        menuVisitedTapCount += visited
+        menuLinkedTapCount += linked
+        if continuousNativeVerboseDiagnostics {
+            print("[CONT-STACK-MENU] configured selection taps count=\(visited) linked=\(linked) zoomed=\(zoomed) refresh=\(menuRefreshCount)")
+        } else if linked > 0 {
+            print("[CONT-STACK-MENU] configured selection taps count=\(visited) linked=\(linked) zoomed=\(zoomed)")
         }
         #endif
     }
@@ -689,6 +706,9 @@ private final class ContinuousNativeSessionDiagnostics: ObservableObject {
         for pageID in pageIDs {
             print("[CONT-HOST-SUMMARY] page=\(shortID(pageID)) created=\(createdByPage[pageID, default: 0]) reused=\(reusedByPage[pageID, default: 0]) panAttempts=\(panAttemptsByPage[pageID, default: 0])")
         }
+        if menuRefreshCount > 0 {
+            print("[CONT-STACK-MENU-SUMMARY] refreshes=\(menuRefreshCount) visited=\(menuVisitedTapCount) linked=\(menuLinkedTapCount)")
+        }
         #endif
     }
 
@@ -731,6 +751,12 @@ private final class ContinuousNativeScrollController: UIViewController,
     private let linkedStackSelectionRecognizers =
         NSHashTable<UIGestureRecognizer>.weakObjects()
     private var stackMenuSuppressionState: Bool?
+    #if DEBUG
+    private var stackZoomChangedSamples = 0
+    private var stackHysteresisSuppressedTotal = 0
+    private var stackHysteresisAcceptedTotal = 0
+    private var stackHysteresisSuppressedSinceAccepted = 0
+    #endif
     private var didLogStackZoomView = false
     /// Stateful displayed-page tracker for Design B. A page transition must
     /// clear the midpoint by this fraction of one page stride.
@@ -844,6 +870,7 @@ private final class ContinuousNativeScrollController: UIViewController,
                                     with view: UIView?) {
         guard zoomPrototype == .stack else { return }
         #if DEBUG
+        stackZoomChangedSamples = 0
         print("[CONT-STACK-ZOOM] begin scale=\(String(format: "%.3f", scrollView.zoomScale))")
         #endif
 
@@ -864,7 +891,10 @@ private final class ContinuousNativeScrollController: UIViewController,
         guard zoomPrototype == .stack else { return }
         reportStackZoomDisplay(scrollView.zoomScale)
         #if DEBUG
-        print("[CONT-STACK-ZOOM] changed scale=\(String(format: "%.3f", scrollView.zoomScale))")
+        stackZoomChangedSamples += 1
+        if continuousNativeVerboseDiagnostics {
+            print("[CONT-STACK-ZOOM] changed scale=\(String(format: "%.3f", scrollView.zoomScale))")
+        }
         #endif
         if scrollView.zoomScale > 1.0001, !stackTrackingFrozen {
             stackTrackingFrozen = true
@@ -885,7 +915,7 @@ private final class ContinuousNativeScrollController: UIViewController,
                                  atScale scale: CGFloat) {
         guard zoomPrototype == .stack else { return }
         #if DEBUG
-        print("[CONT-STACK-ZOOM] end scale=\(String(format: "%.3f", scale))")
+        print("[CONT-STACK-ZOOM] end scale=\(String(format: "%.3f", scale)) changedSamples=\(stackZoomChangedSamples)")
         #endif
         guard scale <= 1.0001 else { return }
 
@@ -1002,13 +1032,19 @@ private final class ContinuousNativeScrollController: UIViewController,
         reportCurrentPage(force: true)
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        logControllerSummary()
+    }
+
     func updateContent(_ content: ContinuousNativePageStack) {
         host.rootView = content
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            let zoomed = self.scrollView.zoomScale > 1.0001
             self.refreshStackSelectionRecognizersIfNeeded(
-                zoomed: self.scrollView.zoomScale > 1.0001,
-                force: true
+                zoomed: zoomed,
+                force: zoomed
             )
         }
     }
@@ -1098,6 +1134,7 @@ private final class ContinuousNativeScrollController: UIViewController,
         guard let previous = stackDisplayedPageIndex else {
             stackDisplayedPageIndex = nearestCandidate
             #if DEBUG
+            stackHysteresisAcceptedTotal += 1
             print("[CONT-HYST] raw=\(String(format: "%.3f", rawIndex)) previous=nil candidate=\(nearestCandidate) accepted=true displayedChanged=initial")
             #endif
             return nearestCandidate
@@ -1119,7 +1156,13 @@ private final class ContinuousNativeScrollController: UIViewController,
         if acceptedIndex != previous {
             stackDisplayedPageIndex = acceptedIndex
             #if DEBUG
-            print("[CONT-HYST] raw=\(String(format: "%.3f", rawIndex)) previous=\(previous) candidate=\(nearestCandidate) forward=\(String(format: "%.3f", forwardThreshold)) backward=\(String(format: "%.3f", backwardThreshold)) accepted=true next=\(acceptedIndex) displayedChanged=true")
+            stackHysteresisAcceptedTotal += 1
+            if stackHysteresisSuppressedSinceAccepted > 0 {
+                print("[CONT-HYST-SUMMARY] suppressed=\(stackHysteresisSuppressedSinceAccepted) accepted=1 previous=\(previous) next=\(acceptedIndex) raw=\(String(format: "%.3f", rawIndex))")
+                stackHysteresisSuppressedSinceAccepted = 0
+            } else if continuousNativeVerboseDiagnostics {
+                print("[CONT-HYST] raw=\(String(format: "%.3f", rawIndex)) previous=\(previous) candidate=\(nearestCandidate) forward=\(String(format: "%.3f", forwardThreshold)) backward=\(String(format: "%.3f", backwardThreshold)) accepted=true next=\(acceptedIndex) displayedChanged=true")
+            }
             #endif
             return acceptedIndex
         }
@@ -1128,7 +1171,11 @@ private final class ContinuousNativeScrollController: UIViewController,
         // changed pages, but hysteresis deliberately retained the previous one.
         if nearestCandidate != previous {
             #if DEBUG
-            print("[CONT-HYST] raw=\(String(format: "%.3f", rawIndex)) previous=\(previous) candidate=\(nearestCandidate) forward=\(String(format: "%.3f", forwardThreshold)) backward=\(String(format: "%.3f", backwardThreshold)) accepted=false suppressed=true displayedChanged=false")
+            stackHysteresisSuppressedTotal += 1
+            stackHysteresisSuppressedSinceAccepted += 1
+            if continuousNativeVerboseDiagnostics {
+                print("[CONT-HYST] raw=\(String(format: "%.3f", rawIndex)) previous=\(previous) candidate=\(nearestCandidate) forward=\(String(format: "%.3f", forwardThreshold)) backward=\(String(format: "%.3f", backwardThreshold)) accepted=false suppressed=true displayedChanged=false")
+            }
             #endif
         }
         return nil
@@ -1144,6 +1191,13 @@ private final class ContinuousNativeScrollController: UIViewController,
 
     private func shortPageID(_ id: UUID) -> String {
         String(id.uuidString.prefix(4))
+    }
+
+    private func logControllerSummary() {
+        #if DEBUG
+        guard zoomPrototype == .stack else { return }
+        print("[CONT-HYST-SUMMARY] suppressedTotal=\(stackHysteresisSuppressedTotal) acceptedTotal=\(stackHysteresisAcceptedTotal)")
+        #endif
     }
 
     private func scrollToPage(index: Int, animated: Bool) {
