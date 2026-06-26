@@ -95,6 +95,7 @@ struct WritingScreen: View {
 
     /// Zoom state + gesture math (F-053).
     @StateObject private var zoom = PageZoomModel()
+    @State private var continuousStackTopBarZoomVisible = false
 
     // MARK: - Body
 
@@ -116,7 +117,7 @@ struct WritingScreen: View {
                     currentIndex: currentPageIndex,
                     pageCount: pages.count,
                     paginationStyle: $settings.paginationStyle,
-                    zoomPercent: zoom.isZoomed ? zoom.percent : nil,
+                    zoomPercent: topBarZoomPercent,
                     onResetZoom: resetZoom,
                     onAddPage: handleAddPage,
                     onDeletePage: { showDeletePageAlert = true },
@@ -214,7 +215,14 @@ struct WritingScreen: View {
         // longer uses PageZoomModel): reset zoom on page change; suspend the
         // session manager's FR auto-recovery while the Continuous stack is
         // zoom-transformed (avoids the geometry-churn freeze loop).
-        .onChange(of: currentPageIndex) { _, _ in zoom.reset() }
+        .onChange(of: currentPageIndex) { _, _ in
+            // Continuous .stack updates the displayed page number while zoomed
+            // from the native UIScrollView viewport center. That must not clear
+            // the top-bar zoom percent: the source of truth is still the outer
+            // scroll view's zoomScale, reported through handleNativeStackZoom.
+            if isContinuousStackNativeZoomed { return }
+            zoom.reset()
+        }
         .onChange(of: zoom.isZoomed) { _, zoomed in
             DrawingSessionManager.shared.setRecoverySuspended(zoomed)
         }
@@ -266,8 +274,35 @@ struct WritingScreen: View {
             restorePageIndex: currentPageIndex,
             zoomPrototype: prototype,
             resetToken: continuousNativeZoomResetToken,
-            onZoomChange: prototype == .stack ? { zoom.setDisplayZoom($0) } : nil
+            onZoomChange: prototype == .stack ? handleNativeStackZoom : nil
         )
+    }
+
+    private var topBarZoomPercent: Int? {
+        if isContinuousStackPrototype {
+            return continuousStackTopBarZoomVisible ? zoom.percent : nil
+        }
+        return zoom.isZoomed ? zoom.percent : nil
+    }
+
+    private var isContinuousStackPrototype: Bool {
+        settings.paginationStyle == .continuous
+            && EditorFeatureFlags.continuousNativeZoomEnabled
+            && EditorFeatureFlags.continuousNativeZoomPrototype == .stack
+    }
+
+    private var isContinuousStackNativeZoomed: Bool {
+        isContinuousStackPrototype && continuousStackTopBarZoomVisible
+    }
+
+    private func handleNativeStackZoom(_ multiple: CGFloat) {
+        zoom.setDisplayZoom(multiple)
+        let visible = multiple > 1.0001
+        guard visible != continuousStackTopBarZoomVisible else { return }
+        continuousStackTopBarZoomVisible = visible
+        #if DEBUG
+        print("[CONT-ZOOM-PERCENT] topBar visible=\(visible) scale=\(String(format: "%.3f", multiple))")
+        #endif
     }
 
     /// Development trace for verifying the feature-flag route. Compiles to a
