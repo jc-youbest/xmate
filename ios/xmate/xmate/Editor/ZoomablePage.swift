@@ -84,7 +84,8 @@ struct ZoomablePage: UIViewRepresentable {
 
     // MARK: Coordinator
 
-    final class Coordinator: NSObject, UIScrollViewDelegate, PKCanvasViewDelegate {
+    final class Coordinator: NSObject, UIScrollViewDelegate, PKCanvasViewDelegate,
+                             UIGestureRecognizerDelegate {
         var parent: ZoomablePage
         weak var scrollView: PageScrollView?
         weak var canvas: XmateCanvasView?
@@ -95,14 +96,19 @@ struct ZoomablePage: UIViewRepresentable {
         /// selection tap recognisers are made to `require(toFail:)` THIS one, so
         /// the app-level reset wins and PencilKit never shows its edit menu.
         var singlePageDoubleTap: UITapGestureRecognizer?
+        /// Finger single-tap recogniser that only begins when an already-visible
+        /// PencilKit edit menu should be dismissed instead of reopened.
+        var singlePageMenuDismissTap: UITapGestureRecognizer?
         /// PencilKit selection recognisers we've already linked, to avoid
         /// duplicate `require(toFail:)` setup. Weak, so recognisers PencilKit
         /// destroys on relayout drop out automatically and fresh ones get linked.
         let linkedSelectionRecognizers = NSHashTable<UIGestureRecognizer>.weakObjects()
+        let linkedDismissSelectionRecognizers = NSHashTable<UIGestureRecognizer>.weakObjects()
         /// 2D state: true while PencilKit's finger selection taps are suppressed
         /// (page zoomed above fit). Lets scrollViewDidZoom skip the subtree walk
         /// except on a zoom-threshold crossing.
         var selectionSuppressed = false
+        let menuDismissal = PKEditMenuDismissalCoordinator()
 
         init(_ parent: ZoomablePage) { self.parent = parent }
 
@@ -152,6 +158,22 @@ struct ZoomablePage: UIViewRepresentable {
             sv.setZoomScale(sv.minimumZoomScale, animated: true)
         }
 
+        @objc func handleMenuDismissTap(_ r: UITapGestureRecognizer) {
+            guard r.state == .recognized else { return }
+            menuDismissal.handleDismissTap(from: canvas) { [weak self] in
+                self?.refreshSelectionRecognizers()
+            }
+            refreshSelectionRecognizers()
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            if gestureRecognizer === singlePageMenuDismissTap {
+                let atFit = scrollView?.isAtFit ?? true
+                return menuDismissal.shouldBeginDismissTap(menuAllowed: atFit)
+            }
+            return true
+        }
+
         // MARK: - PencilKit selection-recogniser coordination (edit-menu fix)
         //
         // Zoom-state-aware suppression of PencilKit's finger selection / edit menu,
@@ -181,15 +203,25 @@ struct ZoomablePage: UIViewRepresentable {
             guard let canvas, let ours = singlePageDoubleTap, let sv = scrollView else { return }
             let zoomed = sv.zoomScale > sv.minimumZoomScale + 0.0001
             selectionSuppressed = zoomed
+            let dismissSuppressed = menuDismissal.suppressesSelectionTapForDismissal
             walkSelectionTaps(in: canvas) { tap, _ in
                 // 2C — failure link, once per recogniser instance.
                 if tap !== ours, !linkedSelectionRecognizers.contains(tap) {
                     tap.require(toFail: ours)               // PK tap waits for OUR double-tap
                     linkedSelectionRecognizers.add(tap)
                 }
-                // 2D — disable finger taps while zoomed; restore at fit.
-                tap.isEnabled = !zoomed
+                if let dismissTap = singlePageMenuDismissTap,
+                   tap !== dismissTap,
+                   !linkedDismissSelectionRecognizers.contains(tap) {
+                    tap.require(toFail: dismissTap)
+                    linkedDismissSelectionRecognizers.add(tap)
+                }
+                // 2D — disable finger taps while zoomed; restore at fit. The
+                // dismissal suppress window is separate and very short: it only
+                // prevents the tap that dismissed a visible menu from reopening it.
+                tap.isEnabled = !(zoomed || dismissSuppressed)
             }
+            if dismissSuppressed { menuDismissal.selectionTapWasSuppressedForDismissal() }
         }
 
         /// Visit every tap-like recogniser (UITapGestureRecognizer, or any whose
@@ -297,6 +329,23 @@ struct ZoomablePage: UIViewRepresentable {
         // they require it to fail (2C) and are disabled while zoomed (2D). That,
         // not the view-level delays/cancels above, is what stops the menu.
         context.coordinator.singlePageDoubleTap = dt
+
+        // Finger single-tap → dismiss an already-visible PencilKit edit menu.
+        // It deliberately fails for the normal first tap at fit, so PencilKit's
+        // private selection tap can still show "Select All / Insert Space".
+        // Once a menu is assumed visible, PK selection taps require this
+        // recogniser to fail; it succeeds, dismisses, and the menu cannot reopen
+        // from that same finger tap.
+        let menuDismiss = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleMenuDismissTap(_:))
+        )
+        menuDismiss.numberOfTapsRequired = 1
+        menuDismiss.allowedTouchTypes = fingerOnly
+        menuDismiss.cancelsTouchesInView = true
+        menuDismiss.delegate = context.coordinator
+        canvas.addGestureRecognizer(menuDismiss)
+        context.coordinator.singlePageMenuDismissTap = menuDismiss
 
         return scrollView
     }

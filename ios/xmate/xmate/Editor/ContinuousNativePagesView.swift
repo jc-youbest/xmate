@@ -525,10 +525,14 @@ private final class ContinuousNativeSessionDiagnostics: ObservableObject {
 
     func refreshStackSelectionRecognizers(
         stackDoubleTap: UITapGestureRecognizer?,
+        menuDismissTap: UITapGestureRecognizer?,
+        menuDismissal: PKEditMenuDismissalCoordinator,
         linkedRecognizers: NSHashTable<UIGestureRecognizer>,
+        linkedDismissRecognizers: NSHashTable<UIGestureRecognizer>,
         zoomed: Bool
     ) {
         guard let stackDoubleTap else { return }
+        let dismissSuppressed = menuDismissal.suppressesSelectionTapForDismissal
         #if DEBUG
         var visited = 0
         var linked = 0
@@ -547,8 +551,17 @@ private final class ContinuousNativeSessionDiagnostics: ObservableObject {
                     linked += 1
                     #endif
                 }
-                tap.isEnabled = !zoomed
+                if let menuDismissTap,
+                   tap !== menuDismissTap,
+                   !linkedDismissRecognizers.contains(tap) {
+                    tap.require(toFail: menuDismissTap)
+                    linkedDismissRecognizers.add(tap)
+                }
+                tap.isEnabled = !(zoomed || dismissSuppressed)
             }
+        }
+        if dismissSuppressed, visited > 0 {
+            menuDismissal.selectionTapWasSuppressedForDismissal()
         }
         #if DEBUG
         menuRefreshCount += 1
@@ -764,8 +777,12 @@ private final class ContinuousNativeScrollController: UIViewController,
     private var stackTrackingFrozen = false
     private var stackResetInProgress = false
     private var stackDoubleTapReset: UITapGestureRecognizer?
+    private var stackMenuDismissTap: UITapGestureRecognizer?
     private let linkedStackSelectionRecognizers =
         NSHashTable<UIGestureRecognizer>.weakObjects()
+    private let linkedStackDismissSelectionRecognizers =
+        NSHashTable<UIGestureRecognizer>.weakObjects()
+    private let menuDismissal = PKEditMenuDismissalCoordinator()
     private var stackMenuSuppressionState: Bool?
     #if DEBUG
     private var stackZoomChangedSamples = 0
@@ -840,6 +857,20 @@ private final class ContinuousNativeScrollController: UIViewController,
             resetTap.delegate = self
             scrollView.addGestureRecognizer(resetTap)
             stackDoubleTapReset = resetTap
+
+            let menuDismiss = UITapGestureRecognizer(
+                target: self,
+                action: #selector(handleStackMenuDismissTap(_:))
+            )
+            menuDismiss.numberOfTapsRequired = 1
+            menuDismiss.numberOfTouchesRequired = 1
+            menuDismiss.allowedTouchTypes = [
+                NSNumber(value: UITouch.TouchType.direct.rawValue)
+            ]
+            menuDismiss.cancelsTouchesInView = true
+            menuDismiss.delegate = self
+            scrollView.addGestureRecognizer(menuDismiss)
+            stackMenuDismissTap = menuDismiss
         }
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -978,6 +1009,35 @@ private final class ContinuousNativeScrollController: UIViewController,
         return true
     }
 
+    func gestureRecognizerShouldBegin(
+        _ gestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        if gestureRecognizer === stackMenuDismissTap {
+            return menuDismissal.shouldBeginDismissTap(
+                menuAllowed: zoomPrototype == .stack
+                    && scrollView.zoomScale <= 1.0001
+            )
+        }
+        return true
+    }
+
+    @objc private func handleStackMenuDismissTap(
+        _ recognizer: UITapGestureRecognizer
+    ) {
+        guard recognizer.state == .recognized else { return }
+        menuDismissal.handleDismissTap(from: scrollView) { [weak self] in
+            guard let self else { return }
+            self.refreshStackSelectionRecognizersIfNeeded(
+                zoomed: self.scrollView.zoomScale > 1.0001,
+                force: true
+            )
+        }
+        refreshStackSelectionRecognizersIfNeeded(
+            zoomed: scrollView.zoomScale > 1.0001,
+            force: true
+        )
+    }
+
     private func completeStackResetIfNeeded() {
         guard stackResetInProgress else { return }
         stackResetInProgress = false
@@ -1035,7 +1095,10 @@ private final class ContinuousNativeScrollController: UIViewController,
         stackMenuSuppressionState = zoomed
         diagnostics.refreshStackSelectionRecognizers(
             stackDoubleTap: stackDoubleTapReset,
+            menuDismissTap: stackMenuDismissTap,
+            menuDismissal: menuDismissal,
             linkedRecognizers: linkedStackSelectionRecognizers,
+            linkedDismissRecognizers: linkedStackDismissSelectionRecognizers,
             zoomed: zoomed
         )
     }
@@ -1061,7 +1124,7 @@ private final class ContinuousNativeScrollController: UIViewController,
             let zoomed = self.scrollView.zoomScale > 1.0001
             self.refreshStackSelectionRecognizersIfNeeded(
                 zoomed: zoomed,
-                force: zoomed
+                force: true
             )
         }
     }
