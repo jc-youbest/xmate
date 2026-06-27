@@ -146,6 +146,52 @@ zoomed); a transient centered ZoomHUD reports the percentage and
 auto-fades. *Rejected:* free-panning / infinite canvas — xmate is
 bounded stationery, not a whiteboard.
 
+### Single Page zoomed edit-menu arbitration
+
+Single Page has two intentional finger-input states. At minimum zoom
+(100%), PencilKit selection remains available, including its **Select All /
+Insert Space** edit menu. Above minimum zoom, the page is navigation-first:
+finger input belongs to native `UIScrollView` pan/pinch and the app's
+double-tap reset, not to PencilKit selection.
+
+PencilKit hosts this menu in its private `PKTiledView`, with tap triggers on
+`PKSelectionGestureView`; it is not an `XmateCanvasView` responder-menu path.
+`ZoomablePage` therefore arbitrates at those selection tap recognizers. Each
+is made to require the app's finger double-tap reset recognizer to fail, so a
+reset wins, and the selection taps are disabled while zoomed above minimum
+then restored on return to minimum. The coordination is refreshed after
+PencilKit relayout because its private selection subtree may be recreated.
+Apple Pencil drawing recognizers are never touched.
+
+This changes only Single Page edit-menu arbitration. Its native
+`UIScrollView` zoom/pan is unchanged, and `ContinuousPagesView`, `PageZoom`,
+and `PencilKitBridge` are outside the fix. The rejected approaches and device
+evidence are recorded in `docs/lifecycle.md`.
+
+### Continuous native zoom/pan migration
+
+Continuous currently zooms by applying SwiftUI `scaleEffect` / `offset` to
+the complete page stack, driven by `PageZoomModel`. Because every finger-pan
+frame publishes `panOffset`, SwiftUI re-evaluates the enclosing screen and
+transforms the live multi-page hierarchy, including its persistent
+`PKCanvasView`s. This is a structural performance problem; tuning the pan math
+does not remove the high-frequency SwiftUI path.
+
+The candidate design uses the outer native `UIScrollView` as zoom owner for
+the persistent Continuous stack, so every page fragment and gap visible in the
+viewport scales together without per-frame SwiftUI state. A later increment
+will bound each zoom session to the page group visible when the pinch begins;
+whole-document free zoom is not the product model. Keep this as a sibling path
+behind a feature flag until device acceptance.
+
+*Rejected as the final Continuous design:* persistent inner zoom scroll views
+per page. Device testing proved that path smooth, but when the viewport showed
+two half-pages it enlarged only one half and left the other inert. It remains
+available only as an A/B comparison prototype. Single Page is the stable
+reference and is not part of this migration; do not modify it or generalize
+`ZoomablePage` yet. Diagnosis is in `docs/lifecycle.md`; rollout order is in
+`roadmap.md` (F-059).
+
 ### Activation bootstrap
 
 The pagination views (SinglePagesView / ContinuousPagesView) declare the

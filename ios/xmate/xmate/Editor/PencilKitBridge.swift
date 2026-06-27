@@ -88,7 +88,9 @@ struct PencilKitBridge: UIViewRepresentable {
     /// Pass nil when userZoom == 1.0 to keep the recogniser disabled so it
     /// cannot compete with the swipe recognisers for page navigation.
     var fingerPanChanged: ((CGSize) -> Void)?
-    var fingerPanEnded: (() -> Void)?
+    /// Called once on gesture end/cancel with the release velocity (pt/s in
+    /// window coordinates), so PageZoomModel can apply inertial momentum.
+    var fingerPanEnded: ((CGSize) -> Void)?
 
     // MARK: - Coordinator
 
@@ -100,7 +102,7 @@ struct PencilKitBridge: UIViewRepresentable {
         var onFingerDoubleTap: (() -> Void)?
 
         var fingerPanChanged: ((CGSize) -> Void)?
-        var fingerPanEnded: (() -> Void)?
+        var fingerPanEnded: ((CGSize) -> Void)?
         /// Weak ref so we can enable/disable the recogniser in updateUIView.
         weak var fingerPanRecognizer: UIPanGestureRecognizer?
 
@@ -121,17 +123,35 @@ struct PencilKitBridge: UIViewRepresentable {
 
         @objc func handleSwipeForward()  { onSwipeForward?()  }
         @objc func handleSwipeBackward() { onSwipeBackward?() }
-        @objc func handleDoubleTap()     { onFingerDoubleTap?() }
+        @objc func handleDoubleTap() {
+            // TEMP DT-DIAG: compare Single vs Continuous double-tap-reset paths.
+            let ix = canvas.map { $0.interactions.map { String(describing: type(of: $0)) }.joined(separator: ",") } ?? "nil"
+            let gr = (canvas.flatMap { $0.gestureRecognizers })?.map { String(describing: type(of: $0)) }.joined(separator: ",") ?? "nil"
+            print("[DT-CONT] handleDoubleTap fired")
+            print("[DT-CONT]   canvas.interactions=[\(ix)]")
+            print("[DT-CONT]   canvas.recognizers=[\(gr)]")
+            print("[DT-CONT]   -> onFingerDoubleTap (SwiftUI transform reset; no native zoom)")
+            onFingerDoubleTap?()
+            print("[DT-CONT] handleDoubleTap returned")
+        }
 
         @objc func handleFingerPan(_ r: UIPanGestureRecognizer) {
             // translation(in: nil) returns window coordinates, which equal
             // SwiftUI layout coordinates for a portrait-locked app.
             let t = r.translation(in: nil)
+            // Perf-probe label distinguishes the two pagination styles.
+            let perfLabel = canvas?.role == .continuous ? "pan-cont" : "pan-single"
             switch r.state {
+            case .began:
+                EditorTrace.perfBegin(perfLabel)
             case .changed:
                 fingerPanChanged?(CGSize(width: t.x, height: t.y))
             case .ended, .cancelled, .failed:
-                fingerPanEnded?()
+                EditorTrace.perfEnd(perfLabel)
+                // velocity(in: nil) is window-coordinate pt/s, matching the
+                // translation space used above.
+                let v = r.velocity(in: nil)
+                fingerPanEnded?(CGSize(width: v.x, height: v.y))
             default:
                 break
             }
@@ -240,6 +260,10 @@ struct PencilKitBridge: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: XmateCanvasView, context: Context) {
+        // Perf probe: counts re-renders within a pan/pinch gesture (no-op unless
+        // EditorTrace.isEnabled).
+        EditorTrace.perfTick()
+
         // Re-apply on update — on real devices, drawingPolicy can fail to
         // take effect before the view enters the window hierarchy.
         uiView.drawingPolicy = .pencilOnly

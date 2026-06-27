@@ -223,6 +223,73 @@ Major lifecycle/timing problems, newest first. Record the symptom, what is
 actually known, what was tried and rejected, and the current status — so a
 future session does not re-walk the same dead ends.
 
+### Continuous zoomed pan lag — STATUS: DIAGNOSED; NATIVE PROTOTYPE PLANNED (2026-06)
+
+**Symptom.** Continuous Page finger pan is seriously laggy while zoomed;
+Single Page's native zoom/pan remains smooth.
+
+**Confirmed mechanism (code audit).** Continuous routes every pan update from
+the current canvas recognizer into `PageZoomModel.panOffset`, an `@Published`
+value. That invalidates the SwiftUI screen and reapplies `scaleEffect` /
+`offset` to the complete Continuous stack. The `.equatable()` boundary avoids
+a per-frame `PencilKitBridge.updateUIView` storm, but it cannot avoid moving
+the enclosing multi-page hierarchy and its persistent canvases. Single Page
+does not use this path: its `UIScrollView` owns `zoomScale` and `contentOffset`
+inside UIKit.
+
+**Device finding and decision.** Persistent per-page native zoom was smooth,
+but failed Continuous viewport semantics: with two half-pages visible, only
+the current half zoomed and the other half became inert while the outer scroll
+was frozen. Pause that design before gesture/reset work. The next candidate is
+native outer-scroll zoom of the persistent stack, later constrained to the
+page group visible at pinch start. Keep both native variants behind DEBUG A/B
+routing during evaluation. The settled direction is in `architecture.md`;
+delivery is F-059 in `roadmap.md`. Single Page and `ZoomablePage` remain
+untouched.
+
+### Single Page zoomed edit menu during double-tap reset — STATUS: RESOLVED (2026-06)
+
+**Symptom.** In Single Page, after zooming above 100%, a finger tap could
+raise PencilKit's **Select All / Insert Space** menu, and a finger double-tap
+intended to reset the page to 100% could also leak into that menu path. This
+conflicted with the zoomed page's navigation-first contract: fingers should
+pan, pinch, or reset the view, while Apple Pencil continues drawing.
+
+**Confirmed root cause.** The edit menu is hosted by PencilKit's private
+`PKTiledView` through `UIEditMenuInteraction`, not by `XmateCanvasView`. Its
+trigger came from tap recognizers on the private `PKSelectionGestureView`.
+Consequently, handling only the app canvas's responder actions or touch
+delivery did not control the owner of the menu interaction.
+
+**Rejected attempts.** Setting `cancelsTouchesInView` and
+`delaysTouchesBegan` on the app double-tap recognizer was insufficient: the
+PencilKit selection tap path could still win or complete independently.
+Returning `false` from `XmateCanvasView.canPerformAction` was also
+insufficient because the menu actions are routed through
+`PKTiledView` / `UIEditMenuInteraction`, not the canvas override.
+
+**Final fix.** `ZoomablePage` coordinates directly with the PencilKit
+selection tap recognizers. First, `require(toFail:)` relationships make those
+taps wait for the app's finger double-tap reset recognizer, giving reset
+priority. Second, while `zoomScale` is above `minimumZoomScale`, the selection
+tap recognizers are disabled; they are restored when zoom returns to minimum.
+The coordination is re-applied after zoom relayout in case PencilKit rebuilds
+its private selection subtree. It never visits or changes Apple Pencil drawing
+recognizers. Single Page's native `UIScrollView` zoom/pan remains unchanged;
+`ContinuousPagesView`, `PageZoom`, and `PencilKitBridge` were not changed.
+The settled interaction design is recorded in `architecture.md` (Flow design
+notes → Single Page zoomed edit-menu arbitration).
+
+**Device verification (iPad 8th generation + Apple Pencil 1):**
+
+- At 100%, a finger single-tap still shows **Select All / Insert Space**.
+- After zooming in, a finger single-tap does not show the menu.
+- After zooming in, a finger double-tap resets to 100% without showing the
+  menu.
+- After reset to 100%, a finger single-tap can show the menu again.
+- Apple Pencil drawing still works.
+- Finger pan and pinch zoom remain smooth.
+
 ### ToolPicker missing on the first page at cold launch — STATUS: RESOLVED (2026-06)
 
 **Confirmed root cause (from the `[TP]` device log).** The full cold-launch

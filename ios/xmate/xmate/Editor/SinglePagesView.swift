@@ -27,12 +27,12 @@
 //   Memory: bounded stationery documents (letters, postcards), same
 //   acceptance as Continuous.
 //
-// Zoom (F-053): only the CURRENT page scales by userZoom and receives the
-// pan offset / pan callbacks; .zIndex keeps it above its neighbours while
-// it overflows the viewport. Swipe callbacks are nil while zoomed —
-// pagination suspended — but the recognisers stay attached (no-op dispatch),
-// so no canvas recreation is needed when zoom toggles. WritingScreen clips
-// the canvas area so the zoomed page never paints over the top bar.
+// Zoom (F-059): each page is a `ZoomablePage` — a UIScrollView that owns its
+// own pinch / pan / inertia / rubber-band natively and is fully gesture-
+// interruptible (the hand-rolled SwiftUI spring it replaced could not be
+// interrupted mid-animation and froze). The scroll view clips the zoomed page
+// to its viewport slot, so it never overflows into neighbours or the top bar.
+// Page-turn swipes fire only at fit (suspended once zoomed in).
 //
 // Active-canvas handoff: identical to Continuous — this view declares the
 // desired active page via DrawingSessionManager.setDesiredActive on appear
@@ -41,25 +41,32 @@
 
 import SwiftUI
 
-struct SinglePagesView: View {
+struct SinglePagesView: View, Equatable {
     let pages: [Page]
     let paper: PaperSize
     let store: NoteStore
 
     @Binding var currentPageIndex: Int
 
-    /// Zoom multiplier supplied by WritingScreen (1.0 = fit, max 3.0).
-    let userZoom: CGFloat
-    /// Pan offset applied to the current page when zoomed, bounded by
-    /// WritingScreen.
-    let zoomPanOffset: CGSize
-    /// Zoom-pan callbacks (F-053). Non-nil when zoomed; forwarded to the
-    /// CURRENT page's PencilKitBridge only, which attaches the recogniser
-    /// to the canvas.
-    let fingerPanChanged: ((CGSize) -> Void)?
-    let fingerPanEnded: (() -> Void)?
-    /// Finger double-tap → reset zoom to 100% (F-053).
-    let onFingerDoubleTap: (() -> Void)?
+    /// Reports the current page's zoom (1.0…3.0 × fit) for the HUD / top bar.
+    let onZoomChange: ((CGFloat) -> Void)?
+    /// Bumped by the top-bar reset button to zoom the current page back to fit.
+    let resetToken: Int
+
+    // MARK: - Equatable
+    //
+    // Skip re-rendering (which would rebuild every ZoomablePage) when only the
+    // displayed zoom % changes: ZoomablePage reports zoom every frame during a
+    // pinch, which updates PageZoomModel (for the HUD) and re-runs WritingScreen's
+    // body — but the canvases must not rebuild. == ignores the closures and
+    // compares only what affects the body.
+    static func == (lhs: SinglePagesView, rhs: SinglePagesView) -> Bool {
+        lhs.pages.map(\.id) == rhs.pages.map(\.id)
+            && lhs.currentPageIndex == rhs.currentPageIndex
+            && lhs.resetToken == rhs.resetToken
+            && lhs.paper.width == rhs.paper.width
+            && lhs.paper.height == rhs.paper.height
+    }
 
     // MARK: - Constants
 
@@ -72,7 +79,6 @@ struct SinglePagesView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
             let vertical = (paper.paginationAxis == .vertical)
             // One full viewport per page: the next page sits exactly one
             // stride away along the pagination axis.
@@ -85,42 +91,26 @@ struct SinglePagesView: View {
                     .ignoresSafeArea()
 
                 ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
-                    let isCurrent = (index == currentPageIndex)
                     let delta = CGFloat(index - currentPageIndex)
-                    // Carousel placement + zoom pan (current page only).
-                    let offsetX = (vertical ? 0 : delta * stride)
-                        + (isCurrent ? zoomPanOffset.width : 0)
-                    let offsetY = (vertical ? delta * stride : 0)
-                        + (isCurrent ? zoomPanOffset.height : 0)
 
-                    PencilKitBridge(
+                    // Each page is a UIScrollView-backed zoomable page: it fits
+                    // the page to the viewport and owns its own pinch / pan /
+                    // inertia / rubber-band natively (F-059). The scroll view
+                    // clips the zoomed page to its slot, so it never overflows
+                    // into the neighbours or the top bar — no zIndex needed.
+                    ZoomablePage(
                         page: page,
                         store: store,
-                        role: .single,
-                        enableSwipeNavigation: true,
+                        paper: paper,
                         swipeAxis: paper.paginationAxis,
-                        // Nil while zoomed — pagination suspended (F-053).
-                        onSwipeForward:  userZoom > 1.0 ? nil : handleSwipeForward,
-                        onSwipeBackward: userZoom > 1.0 ? nil : handleSwipeBackward,
-                        onFingerDoubleTap: onFingerDoubleTap,
-                        // Pan goes ONLY to the current page while zoomed, so
-                        // the canvas the user writes on is the one that pans.
-                        fingerPanChanged: isCurrent ? fingerPanChanged : nil,
-                        fingerPanEnded:   isCurrent ? fingerPanEnded   : nil
+                        onSwipeForward: handleSwipeForward,
+                        onSwipeBackward: handleSwipeBackward,
+                        onZoomChange: onZoomChange,
+                        resetToken: resetToken
                     )
-                    // Frame at logical paper dimensions — PKCanvasView stores
-                    // strokes here so they reload identically on any iPad.
-                    .frame(width: paper.width, height: paper.height)
-                    // Project onto the viewport: base fit, plus userZoom on
-                    // the current page only.
-                    .scaleEffect(fitScale * (isCurrent ? userZoom : 1.0))
-                    .offset(x: offsetX, y: offsetY)
-                    // Drop shadow — same spec as ContinuousPagesView (F-056
-                    // Visual Spec: 4 pt radius, opacity ~0.15, no offset).
-                    .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 0)
-                    // The zoomed current page overflows the viewport; keep it
-                    // above its (unscaled) neighbours.
-                    .zIndex(isCurrent ? 1 : 0)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .offset(x: vertical ? 0 : delta * stride,
+                            y: vertical ? delta * stride : 0)
                 }
             }
             // Center the carousel in the viewport.

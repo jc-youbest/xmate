@@ -41,7 +41,7 @@
 
 import SwiftUI
 
-struct ContinuousPagesView: View {
+struct ContinuousPagesView: View, Equatable {
 
     let pages: [Page]
     let paper: PaperSize
@@ -69,20 +69,37 @@ struct ContinuousPagesView: View {
     /// handled by the current page's own canvas recogniser.
     let isZoomed: Bool
 
-    /// Zoom-pan callbacks (F-053). Forwarded ONLY to the current page's
-    /// PencilKitBridge while zoomed, so exactly one canvas — the same one the
-    /// user writes on — owns the pan gesture. nil otherwise.
-    let fingerPanChanged: ((CGSize) -> Void)?
-    let fingerPanEnded: (() -> Void)?
-
-    /// Finger double-tap → reset zoom to 100% (F-053). Forwarded to every
-    /// page's canvas; WritingScreen no-ops it when not zoomed.
-    let onFingerDoubleTap: (() -> Void)?
+    /// The zoom model — held as a PLAIN reference, NOT `@ObservedObject`: this
+    /// view must not re-render when `userZoom`/`panOffset` change every frame
+    /// (that was the per-frame updateUIView storm). The live transform is
+    /// applied by WritingScreen as a container modifier; here `zoom` is used
+    /// only to wire the current page's finger-pan and double-tap to the model.
+    /// `isZoomed` (a plain Bool compared in `==`) is what re-renders this view
+    /// when zoom crosses the 1.0 boundary, to enable/disable the pan recogniser.
+    let zoom: PageZoomModel
 
     // MARK: - Constants
 
     /// Inter-page gap in display points (F-056 Visual Spec).
     private let gapPt: CGFloat = 20
+
+    // MARK: - Equatable
+    //
+    // Skip re-rendering (and the per-page updateUIView) when nothing that
+    // affects the body changed. This deliberately EXCLUDES the zoom transform
+    // (userZoom/panOffset) and all closures, so a pinch/pan — which re-runs
+    // WritingScreen.body every frame — does not rebuild the canvases here; only
+    // the container `.scaleEffect/.offset` modifier re-applies. `store` and
+    // `zoom` are stable references; `onScrollTargetConsumed` is stale-safe.
+    static func == (lhs: ContinuousPagesView, rhs: ContinuousPagesView) -> Bool {
+        lhs.pages.map(\.id) == rhs.pages.map(\.id)
+            && lhs.currentPageIndex == rhs.currentPageIndex
+            && lhs.scrollTarget == rhs.scrollTarget
+            && lhs.isZoomed == rhs.isZoomed
+            && lhs.restorePageIndex == rhs.restorePageIndex
+            && lhs.paper.width == rhs.paper.width
+            && lhs.paper.height == rhs.paper.height
+    }
 
     // MARK: - Body
 
@@ -99,7 +116,8 @@ struct ContinuousPagesView: View {
 
                     if vertical {
                         VStack(spacing: gapPt) {
-                            pageItems(fitScale: fitScale,
+                            pageItems(viewport: proxy.size,
+                                      fitScale: fitScale,
                                       scaledW: scaledW,
                                       scaledH: scaledH)
                         }
@@ -109,7 +127,8 @@ struct ContinuousPagesView: View {
                         .frame(maxWidth: .infinity)
                     } else {
                         HStack(spacing: gapPt) {
-                            pageItems(fitScale: fitScale,
+                            pageItems(viewport: proxy.size,
+                                      fitScale: fitScale,
                                       scaledW: scaledW,
                                       scaledH: scaledH)
                         }
@@ -189,6 +208,13 @@ struct ContinuousPagesView: View {
                         return max(0, min(pages.count - 1, idx))
                     }
                 } action: { _, newIdx in
+                    // While zoomed the ScrollView is frozen, but the container
+                    // .scaleEffect/.offset still perturbs the reported geometry.
+                    // Letting that drive currentPageIndex oscillates it →
+                    // setDesiredActive → makeActive churn → a first-responder loop
+                    // that freezes the pan. Ignore geometry-derived index changes
+                    // while zoomed; the current page is fixed then.
+                    guard !isZoomed else { return }
                     currentPageIndex = newIdx
                 }
 
@@ -230,16 +256,22 @@ struct ContinuousPagesView: View {
     // MARK: - Page items
 
     @ViewBuilder
-    private func pageItems(fitScale: CGFloat,
+    private func pageItems(viewport: CGSize,
+                           fitScale: CGFloat,
                            scaledW: CGFloat,
                            scaledH: CGFloat) -> some View {
         ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
-            // Pan callbacks go ONLY to the current page while zoomed, so the
-            // single canvas the user writes on is also the one that pans. All
-            // other pages (and the unzoomed state) get nil → no pan recogniser.
+            // Pan goes ONLY to the current page while zoomed, so the single
+            // canvas the user writes on is also the one that pans. The bound is
+            // computed at call-time from the live zoom, so these closures stay
+            // correct even though this view does not re-render per frame.
             let isCurrent = (index == currentPageIndex)
-            let panChanged = (isZoomed && isCurrent) ? fingerPanChanged : nil
-            let panEnded   = (isZoomed && isCurrent) ? fingerPanEnded   : nil
+            let panChanged: ((CGSize) -> Void)? = (isZoomed && isCurrent) ? { t in
+                zoom.panChanged(translation: t, halfOverflow: halfOverflow(in: viewport))
+            } : nil
+            let panEnded: ((CGSize) -> Void)? = (isZoomed && isCurrent) ? { v in
+                zoom.panEnded(velocity: v, halfOverflow: halfOverflow(in: viewport))
+            } : nil
 
             PencilKitBridge(
                 page: page,
@@ -248,7 +280,7 @@ struct ContinuousPagesView: View {
                 // false → no UISwipeGestureRecognizers added
                 // (they fight the ScrollView pan)
                 enableSwipeNavigation: false,
-                onFingerDoubleTap: onFingerDoubleTap,
+                onFingerDoubleTap: { print("[DT-CONT] closure -> zoom.resetAnimated()"); zoom.resetAnimated() },  // TEMP DT-DIAG
                 fingerPanChanged: panChanged,
                 fingerPanEnded: panEnded
             )
@@ -266,5 +298,16 @@ struct ContinuousPagesView: View {
             .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 0)
             .id(page.id)
         }
+    }
+
+    /// Half-overflow pan bound at the current zoom (≥ 0 per axis): how far the
+    /// scaled current page extends past each viewport edge. Read live from
+    /// `zoom.userZoom` so it is correct without re-rendering the view.
+    private func halfOverflow(in viewport: CGSize) -> CGSize {
+        let fit = PageGeometry.fitScale(in: viewport, for: paper)
+        return CGSize(
+            width:  max(0, (paper.width  * fit * zoom.userZoom - viewport.width)  / 2),
+            height: max(0, (paper.height * fit * zoom.userZoom - viewport.height) / 2)
+        )
     }
 }

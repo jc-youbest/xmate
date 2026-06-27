@@ -60,6 +60,21 @@ final class XmateCanvasView: PKCanvasView {
         }
         return resigned
     }
+
+    /// Suppress the system edit menu ("Select All / Insert Space"). xmate is a
+    /// handwriting canvas, never a text field, so the UIResponder edit callout
+    /// is never wanted. Without this, a tap that lands on the canvas — e.g. a
+    /// zoomed page overflowing under the top bar (F-060) — raised that menu.
+    /// PencilKit drawing does not use these actions, so disabling them all is
+    /// safe.
+    ///
+    /// Note: this governs only edit actions routed through THIS canvas. The
+    /// Single-Page zoomed selection menu is hosted by a private PencilKit subview
+    /// (PKTiledView) and is handled separately in ZoomablePage — see
+    /// `refreshSelectionRecognizers`.
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        return false
+    }
 }
 
 // MARK: - ToolPickerHost

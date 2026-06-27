@@ -85,11 +85,17 @@ struct WritingScreen: View {
     /// scrolls there and calls the consumed callback to clear it.
     @State private var scrollTarget: UUID?
 
+    /// One-way reset signal for Single Page (UIScrollView zoom): bumping it
+    /// tells the current page's ZoomablePage to zoom back to fit.
+    @State private var zoomResetToken: Int = 0
+    @State private var continuousNativeZoomResetToken: Int = 0
+
     @State private var showDeletePageAlert: Bool = false
     @State private var showDeleteDocumentAlert: Bool = false
 
     /// Zoom state + gesture math (F-053).
     @StateObject private var zoom = PageZoomModel()
+    @State private var continuousStackTopBarZoomVisible = false
 
     // MARK: - Body
 
@@ -111,12 +117,17 @@ struct WritingScreen: View {
                     currentIndex: currentPageIndex,
                     pageCount: pages.count,
                     paginationStyle: $settings.paginationStyle,
-                    zoomPercent: zoom.isZoomed ? zoom.percent : nil,
+                    zoomPercent: topBarZoomPercent,
                     onResetZoom: resetZoom,
                     onAddPage: handleAddPage,
                     onDeletePage: { showDeletePageAlert = true },
                     onDeleteDocument: { showDeleteDocumentAlert = true }
                 )
+                // Hit-test the top bar ABOVE the canvas area: a zoomed page is
+                // scaled up and its touch area overflows its slot up into the
+                // top-bar strip; without this the overflowing canvas captured
+                // the button taps (F-060). zIndex makes the bar win that strip.
+                .zIndex(1)
 
                 // Canvas area extracted into a helper to keep body small enough
                 // for the Swift type checker (the GeometryReader + gesture tree
@@ -152,110 +163,175 @@ struct WritingScreen: View {
     //
     // Extracted from body to stay within Swift's expression-complexity limit.
 
-    /// GeometryReader wrapper that computes the pan bounds, then hosts the
-    /// ZStack. Gestures and modifiers are attached here so they share the
-    /// same proxy size without re-entering a closure in body.
     @ViewBuilder
     private var canvasArea: some View {
-        GeometryReader { proxy in
-            let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
-            // Half-overflow: how far the scaled page extends past each viewport
-            // edge. Clamped to ≥ 0 so the bound is never inverted at fit.
-            let halfOverflow = CGSize(
-                width: max(0, (paper.width * fitScale * zoom.userZoom
-                               - proxy.size.width) / 2),
-                height: max(0, (paper.height * fitScale * zoom.userZoom
-                                - proxy.size.height) / 2)
-            )
-
-            canvasZStack(halfOverflow: halfOverflow)
-                // MagnificationGesture is two-finger; never conflicts with Pencil.
-                .simultaneousGesture(
-                    MagnificationGesture()
-                        .onChanged { zoom.pinchChanged($0) }
-                        .onEnded { zoom.pinchEnded($0) }
-                )
-                // ZoomHUD — centered, transient, touch-transparent.
-                .overlay {
-                    if zoom.hudVisible {
-                        ZoomHUD(percent: zoom.percent)
-                    }
-                }
-        }
-        // The zoomed page overflows its slot; clip so it never paints over
-        // WritingTopBar (F-053).
-        .clipped()
-        .ignoresSafeArea(edges: .bottom)
-        // Reset zoom and pan on every page change so each page opens at fit.
-        .onChange(of: currentPageIndex) { _, _ in
-            zoom.reset()
-        }
-    }
-
-    /// ZStack contents: the active pagination view. Pan callbacks are forwarded
-    /// to the PencilKitBridge inside each view. There is no separate zoom
-    /// overlay canvas — both styles transform existing canvases so a Page is
-    /// never edited by two canvases at once (object-lifecycle invariant).
-    @ViewBuilder
-    private func canvasZStack(halfOverflow: CGSize) -> some View {
-        // Pan callbacks: non-nil only when zoomed. Closures close over the
-        // current halfOverflow bounds from the enclosing GeometryReader.
-        let panChanged: ((CGSize) -> Void)? = zoom.isZoomed ? { translation in
-            zoom.panChanged(translation: translation, halfOverflow: halfOverflow)
-        } : nil
-        let panEnded: (() -> Void)? = zoom.isZoomed ? {
-            zoom.panEnded()
-        } : nil
-
-        ZStack {
+        GeometryReader { _ in
             switch settings.paginationStyle {
             case .singlePage:
-                SinglePagesView(
-                    pages: pages,
-                    paper: paper,
-                    store: store,
-                    currentPageIndex: $currentPageIndex,
-                    userZoom: zoom.userZoom,
-                    zoomPanOffset: zoom.panOffset,
-                    fingerPanChanged: panChanged,
-                    fingerPanEnded: panEnded,
-                    onFingerDoubleTap: resetZoom
-                )
+                // Single Page owns its zoom natively (per-page UIScrollView in
+                // ZoomablePage): pinch / pan / inertia / rubber-band are all the
+                // scroll view's and fully gesture-interruptible. No external
+                // transform, MagnificationGesture, or HUD here. The scroll view
+                // clips the zoomed page to its slot, so nothing paints over the
+                // top bar either.
+                SinglePagesView(pages: pages,
+                                paper: paper,
+                                store: store,
+                                currentPageIndex: $currentPageIndex,
+                                onZoomChange: { zoom.setDisplayZoom($0) },
+                                resetToken: zoomResetToken)
+                    .equatable()
             case .continuous:
-                // Continuous zoom (F-053): no overlay canvas. When zoomed we
-                // freeze the ScrollView and scale/offset the whole stack so the
-                // current page fills the viewport, while the SAME current-page
-                // canvas keeps editing and owns the finger-pan gesture. This
-                // preserves the one-canvas-per-Page invariant — there is never a
-                // second, independently-savable drawing for the page.
-                ContinuousPagesView(
-                    pages: pages,
-                    paper: paper,
-                    store: store,
-                    currentPageIndex: $currentPageIndex,
-                    scrollTarget: scrollTarget,
-                    onScrollTargetConsumed: { scrollTarget = nil },
-                    restorePageIndex: currentPageIndex,
-                    isZoomed: zoom.isZoomed,
-                    fingerPanChanged: panChanged,
-                    fingerPanEnded: panEnded,
-                    onFingerDoubleTap: resetZoom
-                )
-                // userZoom on top of the per-page fitScale already applied
-                // inside ContinuousPagesView; identity when not zoomed.
-                .scaleEffect(zoom.userZoom)
-                .offset(zoom.panOffset)
+                if EditorFeatureFlags.continuousNativeZoomEnabled {
+                    switch EditorFeatureFlags.continuousNativeZoomPrototype {
+                    case .perPage:
+                        continuousNativeArea(.perPage)
+                            .onAppear {
+                                logContinuousPath("native prototype perPage")
+                            }
+                    case .stack:
+                        continuousNativeArea(.stack)
+                            .onAppear {
+                                logContinuousPath("native prototype stack")
+                            }
+                    }
+                } else {
+                    continuousArea
+                        .onAppear {
+                            logContinuousPath("legacy ContinuousPagesView")
+                        }
+                }
             }
+        }
+        .clipped()
+        // ZoomHUD — centered, transient, touch-transparent. Shared by both
+        // styles: fed by PageZoomModel, which Single mirrors via setDisplayZoom
+        // and Continuous drives via pinchChanged.
+        .overlay {
+            if zoom.hudVisible { ZoomHUD(percent: zoom.percent) }
+        }
+        .ignoresSafeArea(edges: .bottom)
+        // Continuous-only zoom bookkeeping (harmless no-ops for Single, which no
+        // longer uses PageZoomModel): reset zoom on page change; suspend the
+        // session manager's FR auto-recovery while the Continuous stack is
+        // zoom-transformed (avoids the geometry-churn freeze loop).
+        .onChange(of: currentPageIndex) { _, _ in
+            // Continuous .stack updates the displayed page number while zoomed
+            // from the native UIScrollView viewport center. That must not clear
+            // the top-bar zoom percent: the source of truth is still the outer
+            // scroll view's zoomScale, reported through handleNativeStackZoom.
+            if isContinuousStackNativeZoomed { return }
+            zoom.reset()
+        }
+        .onChange(of: zoom.isZoomed) { _, zoomed in
+            DrawingSessionManager.shared.setRecoverySuspended(zoomed)
         }
     }
 
-    // MARK: - Zoom reset (F-053)
+    /// Continuous pagination with its whole-stack zoom: pinch drives
+    /// PageZoomModel; the stack is scaled/offset; ContinuousPagesView is
+    /// `.equatable()` so a pinch/pan does not rebuild its canvases. (Continuous
+    /// still uses the SwiftUI-transform approach; the UIScrollView migration
+    /// done for Single lands here in a later increment.)
+    @ViewBuilder
+    private var continuousArea: some View {
+        ContinuousPagesView(
+            pages: pages,
+            paper: paper,
+            store: store,
+            currentPageIndex: $currentPageIndex,
+            scrollTarget: scrollTarget,
+            onScrollTargetConsumed: { scrollTarget = nil },
+            restorePageIndex: currentPageIndex,
+            isZoomed: zoom.isZoomed,
+            zoom: zoom
+        )
+        .equatable()
+        .scaleEffect(zoom.userZoom)
+        .offset(zoom.panOffset)
+        // MagnificationGesture is two-finger; never conflicts with Pencil.
+        .simultaneousGesture(
+            MagnificationGesture()
+                .onChanged { zoom.pinchChanged($0) }
+                .onEnded { zoom.pinchEnded($0) }
+        )
+    }
 
-    /// Shared by the finger double-tap and ZoomResetButton.
+    /// Native Continuous A/B prototype. `.perPage` preserves the smooth Design A
+    /// experiment; `.stack` prepares the outer native scroll as the future zoom
+    /// owner while remaining locked at 1x in this increment.
+    @ViewBuilder
+    private func continuousNativeArea(
+        _ prototype: ContinuousNativeZoomPrototype
+    ) -> some View {
+        ContinuousNativePagesView(
+            pages: pages,
+            paper: paper,
+            store: store,
+            currentPageIndex: $currentPageIndex,
+            scrollTarget: scrollTarget,
+            onScrollTargetConsumed: { scrollTarget = nil },
+            restorePageIndex: currentPageIndex,
+            zoomPrototype: prototype,
+            resetToken: continuousNativeZoomResetToken,
+            onZoomChange: prototype == .stack ? handleNativeStackZoom : nil
+        )
+    }
+
+    private var topBarZoomPercent: Int? {
+        if isContinuousStackPrototype {
+            return continuousStackTopBarZoomVisible ? zoom.percent : nil
+        }
+        return zoom.isZoomed ? zoom.percent : nil
+    }
+
+    private var isContinuousStackPrototype: Bool {
+        settings.paginationStyle == .continuous
+            && EditorFeatureFlags.continuousNativeZoomEnabled
+            && EditorFeatureFlags.continuousNativeZoomPrototype == .stack
+    }
+
+    private var isContinuousStackNativeZoomed: Bool {
+        isContinuousStackPrototype && continuousStackTopBarZoomVisible
+    }
+
+    private func handleNativeStackZoom(_ multiple: CGFloat) {
+        zoom.setDisplayZoom(multiple)
+        let visible = multiple > 1.0001
+        guard visible != continuousStackTopBarZoomVisible else { return }
+        continuousStackTopBarZoomVisible = visible
+        #if DEBUG
+        print("[CONT-ZOOM-PERCENT] topBar visible=\(visible) scale=\(String(format: "%.3f", multiple))")
+        #endif
+    }
+
+    /// Development trace for verifying the feature-flag route. Compiles to a
+    /// no-op in Release builds and has no effect on view or gesture behavior.
+    private func logContinuousPath(_ path: String) {
+        #if DEBUG
+        print("[CONT-PATH] \(path)")
+        #endif
+    }
+
+    // MARK: - Zoom reset
+
+    /// The top-bar reset button. Single Page owns its zoom in the UIScrollView,
+    /// so it is reset via a one-way token (ZoomablePage zooms back to fit, which
+    /// reports 1.0 and clears the HUD). Continuous resets PageZoomModel directly.
     private func resetZoom() {
-        guard zoom.isZoomed else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
-            zoom.reset(flashHUD: true)
+        switch settings.paginationStyle {
+        case .singlePage:
+            zoomResetToken &+= 1
+        case .continuous:
+            if EditorFeatureFlags.continuousNativeZoomEnabled,
+               EditorFeatureFlags.continuousNativeZoomPrototype == .stack {
+                continuousNativeZoomResetToken &+= 1
+                return
+            }
+            guard zoom.isZoomed else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                zoom.reset(flashHUD: true)
+            }
         }
     }
 
