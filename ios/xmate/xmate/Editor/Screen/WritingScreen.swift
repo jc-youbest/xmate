@@ -353,9 +353,15 @@ struct WritingScreen: View {
     // MARK: - Page CRUD (F-051)
 
     private func handleAddPage() {
+        let existingPageIDs = pages.compactMap(\.id)
         let newPage = store.appendPage(to: document)
         pages = store.pages(of: document)
-        let newIndex = pages.count - 1
+        let legacyNewIndex = pages.count - 1
+        let newIndex = plannedAddPageTargetIndex(
+            newPage: newPage,
+            existingPageIDs: existingPageIDs,
+            fallbackIndex: legacyNewIndex
+        )
 
         switch settings.paginationStyle {
         case .singlePage:
@@ -371,6 +377,29 @@ struct WritingScreen: View {
             // One-way scroll signal — ContinuousPagesView clears it after firing.
             scrollTarget = newPage.id
         }
+    }
+
+    private func plannedAddPageTargetIndex(
+        newPage: Page,
+        existingPageIDs: [UUID],
+        fallbackIndex: Int
+    ) -> Int {
+        guard let newPageID = newPage.id else { return fallbackIndex }
+        let result = PageMutationCoordinator.plan(
+            request: .addPage(newPageID: newPageID),
+            pageIDs: existingPageIDs,
+            currentPageIndex: currentPageIndex
+        )
+
+        guard result.status == .planned,
+              result.targetPageID == newPageID,
+              result.targetPageIndex == fallbackIndex else {
+            // This bridge is deliberately conservative: if the planner ever
+            // disagrees with the legacy append-to-end rule, keep current
+            // runtime behavior until the full transaction migration.
+            return fallbackIndex
+        }
+        return result.targetPageIndex ?? fallbackIndex
     }
 
     private func handleDeletePage() {
