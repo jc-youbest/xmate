@@ -93,6 +93,13 @@ array mutation, viewport reconciliation, zoom reset, displayed-page
 selection, and DrawingSessionManager activation can become one explicit,
 ordered transaction instead of scattered view state changes.
 
+`EditorMutationPhase` is an inert phase guard for those future
+transactions. Its phases are idle, planning page mutation, applying page
+mutation, restoring viewport, and activating drawing. Runtime views do not
+read it yet; later add/delete work can use the phase to freeze
+current-page tracking, zoom tracking, and incidental drawing activation
+while a mutation transaction is in progress.
+
 `PageMutationCoordinator` is currently a pure planner. It models
 target-page selection for add/delete page transactions and returns the
 future viewport, zoom, and drawing-activation commands those transactions

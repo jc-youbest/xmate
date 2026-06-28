@@ -22,8 +22,9 @@
 - Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
   LayoutPolicy now provide the current A4 portrait data, bridged back through
   PageGeometry so runtime behavior stays unchanged.
-- State/: inert EditorCommand / ViewportCommand / DrawingCommand values for
-  future transaction-style viewport, zoom, mutation, and activation flows.
+- State/: inert EditorCommand / ViewportCommand / DrawingCommand values, plus
+  EditorMutationPhase, for future transaction-style viewport, zoom, mutation,
+  and activation flows.
 - Mutation/: PageMutationCoordinator planner for future add/delete
   transactions. WritingScreen uses it only to confirm add/delete target
   planning today; WritingScreen still owns runtime page mutation.
@@ -41,7 +42,7 @@
 - `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
   `PencilKit/DrawingSessionManager.swift`
 - `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`
-- `State/EditorCommand.swift`
+- `State/EditorCommand.swift`, `State/EditorMutationPhase.swift`
 - `Mutation/PageMutationCoordinator.swift`
 
 ## Not responsible for
@@ -79,6 +80,9 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
 - Command types are preparation only until a coordinator interprets them;
   do not bypass DrawingSessionManager or viewport invariants by dispatching
   ad-hoc side effects from the command model.
+- EditorMutationPhase is preparation only. Runtime views do not read it yet;
+  it will later guard current-page, zoom, and drawing-activation tracking
+  during add/delete transactions.
 - PageMutationCoordinator is currently a pure planner, lightly bridged into
   WritingScreen for add/delete target selection only. Do not move storage
   mutation or side-effect ordering into it until the add/delete transaction is
