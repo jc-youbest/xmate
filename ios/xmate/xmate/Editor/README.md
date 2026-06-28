@@ -24,6 +24,8 @@
   PageGeometry so runtime behavior stays unchanged.
 - State/: inert EditorCommand / ViewportCommand / DrawingCommand values for
   future transaction-style viewport, zoom, mutation, and activation flows.
+- Mutation/: inert PageMutationCoordinator planner for future add/delete
+  transactions. WritingScreen still owns runtime page mutation today.
 - Diagnostics/: editor feature flags and trace/diagnostic helpers.
 - PageSurface/: reserved for future page-surface model work.
 
@@ -39,6 +41,7 @@
   `PencilKit/DrawingSessionManager.swift`
 - `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`
 - `State/EditorCommand.swift`
+- `Mutation/PageMutationCoordinator.swift`
 
 ## Not responsible for
 
@@ -75,5 +78,7 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
 - Command types are preparation only until a coordinator interprets them;
   do not bypass DrawingSessionManager or viewport invariants by dispatching
   ad-hoc side effects from the command model.
+- PageMutationCoordinator is currently a pure planner. Do not wire it into
+  WritingScreen until the add/delete transaction is intentionally migrated.
 - Page-turn/zoom changes must be device-tested (iPad 8 + Pencil 1)
   before being considered done.

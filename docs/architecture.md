@@ -93,6 +93,14 @@ array mutation, viewport reconciliation, zoom reset, displayed-page
 selection, and DrawingSessionManager activation can become one explicit,
 ordered transaction instead of scattered view state changes.
 
+`PageMutationCoordinator` is currently a pure, inert planner. It models
+target-page selection for add/delete page transactions and returns the
+future viewport, zoom, and drawing-activation commands those transactions
+will use. WritingScreen still performs the actual add/delete runtime
+behavior directly; the planner exists so the later zoomed add/delete fix
+can move page mutation, viewport restoration, zoom reset, and activation
+as one transaction.
+
 ## Page surface layering
 
 `PageSurface` is the editor's shared page rendering container. Its layer
