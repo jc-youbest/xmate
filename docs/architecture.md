@@ -77,6 +77,13 @@ portrait, but the data now flows through `PageSpec` / `PageSize` /
 `PaperSize` runtime path. Per-document paper still waits for the Core
 Data migration.
 
+`EditorLayoutEngine` is the future pure layout source. It takes
+`PageSpec`, `LayoutPolicy`, viewport size, page count, and presentation
+style, then returns page frames, content size, fit scale, gap, flow axis,
+and presentation style. Current runtime views still use their existing
+layout code through the `PageGeometry` compatibility bridge; the engine is
+being introduced before it becomes authoritative.
+
 ## Page surface layering
 
 `PageSurface` is the editor's shared page rendering container. Its layer
