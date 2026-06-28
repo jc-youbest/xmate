@@ -96,13 +96,13 @@ ordered transaction instead of scattered view state changes.
 `PageMutationCoordinator` is currently a pure planner. It models
 target-page selection for add/delete page transactions and returns the
 future viewport, zoom, and drawing-activation commands those transactions
-will use. WritingScreen now consults it only for add-page target selection
-after the page has been appended and pages have been reloaded, with a
-fallback to the legacy append-to-end index if the planner ever disagrees.
-WritingScreen still performs the actual add/delete runtime behavior
-directly; the planner exists so the later zoomed add/delete fix can move
-page mutation, viewport restoration, zoom reset, and activation as one
-transaction.
+will use. WritingScreen now consults it only to confirm add/delete target
+selection after the legacy page mutation and page reload have happened,
+with fallbacks to the legacy append-to-end and delete-neighbor indexes if
+the planner ever disagrees. WritingScreen still performs the actual
+add/delete runtime behavior directly; the planner exists so the later
+zoomed add/delete fix can move page mutation, viewport restoration, zoom
+reset, and activation as one transaction.
 
 ## Page surface layering
 

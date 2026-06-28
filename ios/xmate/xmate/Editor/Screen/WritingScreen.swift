@@ -406,13 +406,20 @@ struct WritingScreen: View {
         guard pages.count > 1 else { return }
         let deleteIndex = currentPageIndex
         let pageToDelete = pages[deleteIndex]
-        let newIndex = max(0, deleteIndex - 1)
+        let existingPageIDs = pages.compactMap(\.id)
+        let legacyNewIndex = max(0, deleteIndex - 1)
 
         // dismantleUIView in PencilKitBridge flushes the departing page's
         // drawing before the PKCanvasView is torn down.
         store.deletePage(pageToDelete, from: document)
         let newPages = store.pages(of: document)
-        let safeIndex = min(newIndex, newPages.count - 1)
+        let legacySafeIndex = min(legacyNewIndex, newPages.count - 1)
+        let safeIndex = plannedDeletePageTargetIndex(
+            deletedPage: pageToDelete,
+            existingPageIDs: existingPageIDs,
+            newPages: newPages,
+            fallbackIndex: legacySafeIndex
+        )
 
         switch settings.paginationStyle {
         case .singlePage:
@@ -436,6 +443,35 @@ struct WritingScreen: View {
                 scrollTarget = newPages[safeIndex].id
             }
         }
+    }
+
+    private func plannedDeletePageTargetIndex(
+        deletedPage: Page,
+        existingPageIDs: [UUID],
+        newPages: [Page],
+        fallbackIndex: Int
+    ) -> Int {
+        guard let deletedPageID = deletedPage.id,
+              fallbackIndex >= 0,
+              fallbackIndex < newPages.count,
+              let fallbackPageID = newPages[fallbackIndex].id else {
+            return fallbackIndex
+        }
+        let result = PageMutationCoordinator.plan(
+            request: .deletePage(pageID: deletedPageID),
+            pageIDs: existingPageIDs,
+            currentPageIndex: currentPageIndex
+        )
+
+        guard result.status == .planned,
+              result.targetPageID == fallbackPageID,
+              result.targetPageIndex == fallbackIndex else {
+            // This bridge only confirms the legacy delete target. If the
+            // planner disagrees, keep the current runtime rule until the full
+            // mutation transaction owns page deletion.
+            return fallbackIndex
+        }
+        return result.targetPageIndex ?? fallbackIndex
     }
 
     private func handleDeleteDocument() {
