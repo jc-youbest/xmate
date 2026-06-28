@@ -28,7 +28,8 @@
   tracking during add/delete restore.
 - Mutation/: PageMutationCoordinator planner for future add/delete
   transactions. WritingScreen uses it only to confirm add/delete target
-  planning today; WritingScreen still owns runtime page mutation.
+  planning today; WritingScreen still owns runtime page mutation. The planner
+  can now carry an unused, policy-derived future zoom reset command.
 - Diagnostics/: editor feature flags and trace/diagnostic helpers.
 - PageSurface/: reserved for future page-surface model work.
 
@@ -89,5 +90,8 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   WritingScreen for add/delete target selection only. Do not move storage
   mutation or side-effect ordering into it until the add/delete transaction is
   intentionally migrated.
+- PageMutationPolicy / MutationZoomPolicy are preparation only. They can model
+  "reset Continuous stack zoom before add/delete" as a future command, but
+  WritingScreen does not dispatch that command yet.
 - Page-turn/zoom changes must be device-tested (iPad 8 + Pencil 1)
   before being considered done.

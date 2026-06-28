@@ -105,15 +105,18 @@ mutation target. The phase does not suppress zoom tracking or incidental
 drawing activation yet.
 
 `PageMutationCoordinator` is currently a pure planner. It models
-target-page selection for add/delete page transactions and returns the
-future viewport, zoom, and drawing-activation commands those transactions
-will use. WritingScreen now consults it only to confirm add/delete target
+target-page selection for add/delete page transactions and returns future
+viewport, zoom, and drawing-activation commands those transactions will
+use. WritingScreen now consults it only to confirm add/delete target
 selection after the legacy page mutation and page reload have happened,
 with fallbacks to the legacy append-to-end and delete-neighbor indexes if
-the planner ever disagrees. WritingScreen still performs the actual
-add/delete runtime behavior directly; the planner exists so the later
-zoomed add/delete fix can move page mutation, viewport restoration, zoom
-reset, and activation as one transaction.
+the planner ever disagrees. `PageMutationPolicy` / `MutationZoomPolicy`
+can describe an unused future zoom command, including "reset Continuous
+stack zoom before add/delete when currently zoomed." WritingScreen still
+performs the actual add/delete runtime behavior directly and does not
+dispatch that zoom command yet; the planner exists so the later zoomed
+add/delete fix can move page mutation, viewport restoration, zoom reset,
+and activation as one transaction.
 
 ## Page surface layering
 

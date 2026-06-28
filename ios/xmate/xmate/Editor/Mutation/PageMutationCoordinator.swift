@@ -12,6 +12,15 @@ import Foundation
 enum PageMutationRequest: Hashable {
     case addPage(newPageID: UUID)
     case deletePage(pageID: UUID)
+
+    var mutationKind: PageMutationKind {
+        switch self {
+        case .addPage:
+            return .addPage
+        case .deletePage:
+            return .deletePage
+        }
+    }
 }
 
 struct PageMutationResult: Equatable {
@@ -52,40 +61,53 @@ enum PageMutationCoordinator {
     static func plan(
         request: PageMutationRequest,
         pageIDs: [UUID],
-        currentPageIndex: Int
+        currentPageIndex: Int,
+        pageMutationPolicy: PageMutationPolicy = PageMutationPolicy(),
+        zoomContext: PageMutationZoomContext? = nil
     ) -> PageMutationResult {
+        let zoomCommand = pageMutationPolicy.zoomCommand(
+            for: request.mutationKind,
+            context: zoomContext
+        )
+
         switch request {
         case .addPage(let newPageID):
             return planAddPage(
                 newPageID: newPageID,
-                existingPageCount: pageIDs.count
+                existingPageCount: pageIDs.count,
+                zoomCommand: zoomCommand
             )
 
         case .deletePage(let pageID):
             return planDeletePage(
                 pageID: pageID,
                 pageIDs: pageIDs,
-                currentPageIndex: currentPageIndex
+                currentPageIndex: currentPageIndex,
+                zoomCommand: zoomCommand
             )
         }
     }
 
     private static func planAddPage(
         newPageID: UUID,
-        existingPageCount: Int
+        existingPageCount: Int,
+        zoomCommand: ViewportCommand?
     ) -> PageMutationResult {
         let targetIndex = max(0, existingPageCount)
-        let zoomCommand = ViewportCommand.resetZoom(animated: true)
+        var viewportCommands: [ViewportCommand] = [
+            .preserveViewportAnchor(pageID: newPageID),
+            .scrollToPage(pageID: newPageID, anchor: .centered, animated: true),
+            .selectPage(pageID: newPageID),
+        ]
+        if let zoomCommand {
+            viewportCommands.append(zoomCommand)
+        }
+
         return PageMutationResult(
             status: .planned,
             targetPageID: newPageID,
             targetPageIndex: targetIndex,
-            viewportCommands: [
-                .preserveViewportAnchor(pageID: newPageID),
-                .scrollToPage(pageID: newPageID, anchor: .centered, animated: true),
-                .selectPage(pageID: newPageID),
-                zoomCommand,
-            ],
+            viewportCommands: viewportCommands,
             drawingActivationCommands: [
                 .activateDrawing(pageID: newPageID, reason: .mutation),
             ],
@@ -96,7 +118,8 @@ enum PageMutationCoordinator {
     private static func planDeletePage(
         pageID: UUID,
         pageIDs: [UUID],
-        currentPageIndex: Int
+        currentPageIndex: Int,
+        zoomCommand: ViewportCommand?
     ) -> PageMutationResult {
         guard pageIDs.count > 1 else {
             return .rejected(.cannotDeleteLastPage)
@@ -111,20 +134,22 @@ enum PageMutationCoordinator {
         let targetIndex = deleteIndex > 0 ? deleteIndex - 1 : 0
         let safeTargetIndex = min(targetIndex, remaining.count - 1)
         let targetPageID = remaining[safeTargetIndex]
-        let zoomCommand = ViewportCommand.resetZoom(animated: true)
+        var viewportCommands: [ViewportCommand] = [
+            .preserveViewportAnchor(pageID: pageIDs[
+                max(0, min(currentPageIndex, pageIDs.count - 1))
+            ]),
+            .scrollToPage(pageID: targetPageID, anchor: .centered, animated: true),
+            .selectPage(pageID: targetPageID),
+        ]
+        if let zoomCommand {
+            viewportCommands.append(zoomCommand)
+        }
 
         return PageMutationResult(
             status: .planned,
             targetPageID: targetPageID,
             targetPageIndex: safeTargetIndex,
-            viewportCommands: [
-                .preserveViewportAnchor(pageID: pageIDs[
-                    max(0, min(currentPageIndex, pageIDs.count - 1))
-                ]),
-                .scrollToPage(pageID: targetPageID, anchor: .centered, animated: true),
-                .selectPage(pageID: targetPageID),
-                zoomCommand,
-            ],
+            viewportCommands: viewportCommands,
             drawingActivationCommands: [
                 .activateDrawing(pageID: targetPageID, reason: .mutation),
             ],
@@ -132,4 +157,3 @@ enum PageMutationCoordinator {
         )
     }
 }
-

@@ -16,7 +16,7 @@ struct PageMutationCoordinatorTests {
         #expect(result.status == .planned)
         #expect(result.targetPageID == newPageID)
         #expect(result.targetPageIndex == 2)
-        #expect(result.shouldResetZoom)
+        #expect(!result.shouldResetZoom)
         #expect(result.viewportCommands.contains(
             .scrollToPage(pageID: newPageID, anchor: .centered, animated: true)
         ))
@@ -71,5 +71,89 @@ struct PageMutationCoordinatorTests {
         #expect(result.viewportCommands.isEmpty)
         #expect(result.drawingActivationCommands.isEmpty)
     }
-}
 
+    @Test func continuousStackZoomPolicyRequestsResetOnlyWhenZoomed() {
+        let existing = [UUID(), UUID()]
+        let newPageID = UUID()
+        let policy = PageMutationPolicy(
+            mutationZoomPolicy: .resetContinuousStackZoomBeforeMutation
+        )
+
+        let zoomedResult = PageMutationCoordinator.plan(
+            request: .addPage(newPageID: newPageID),
+            pageIDs: existing,
+            currentPageIndex: 0,
+            pageMutationPolicy: policy,
+            zoomContext: PageMutationZoomContext(
+                presentationStyle: .continuous,
+                zoomOwner: .continuousNativeStack,
+                isZoomed: true
+            )
+        )
+
+        #expect(zoomedResult.zoomCommand == .resetZoom(animated: true))
+        #expect(zoomedResult.viewportCommands.contains(.resetZoom(animated: true)))
+
+        let unzoomedResult = PageMutationCoordinator.plan(
+            request: .addPage(newPageID: newPageID),
+            pageIDs: existing,
+            currentPageIndex: 0,
+            pageMutationPolicy: policy,
+            zoomContext: PageMutationZoomContext(
+                presentationStyle: .continuous,
+                zoomOwner: .continuousNativeStack,
+                isZoomed: false
+            )
+        )
+
+        #expect(unzoomedResult.zoomCommand == nil)
+        #expect(!unzoomedResult.shouldResetZoom)
+    }
+
+    @Test func continuousStackZoomPolicyDoesNotResetSinglePageZoom() {
+        let first = UUID()
+        let second = UUID()
+        let policy = PageMutationPolicy(
+            mutationZoomPolicy: .resetContinuousStackZoomBeforeMutation
+        )
+
+        let result = PageMutationCoordinator.plan(
+            request: .deletePage(pageID: second),
+            pageIDs: [first, second],
+            currentPageIndex: 1,
+            pageMutationPolicy: policy,
+            zoomContext: PageMutationZoomContext(
+                presentationStyle: .singlePage,
+                zoomOwner: .singlePage,
+                isZoomed: true
+            )
+        )
+
+        #expect(result.status == .planned)
+        #expect(result.zoomCommand == nil)
+        #expect(!result.shouldResetZoom)
+    }
+
+    @Test func genericZoomPolicyRequestsResetForAnyZoomedPresentation() {
+        let first = UUID()
+        let second = UUID()
+        let policy = PageMutationPolicy(
+            mutationZoomPolicy: .resetZoomBeforeMutation
+        )
+
+        let result = PageMutationCoordinator.plan(
+            request: .deletePage(pageID: second),
+            pageIDs: [first, second],
+            currentPageIndex: 1,
+            pageMutationPolicy: policy,
+            zoomContext: PageMutationZoomContext(
+                presentationStyle: .singlePage,
+                zoomOwner: .singlePage,
+                isZoomed: true
+            )
+        )
+
+        #expect(result.status == .planned)
+        #expect(result.zoomCommand == .resetZoom(animated: true))
+    }
+}
