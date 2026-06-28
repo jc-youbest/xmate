@@ -63,6 +63,11 @@ struct ContinuousPagesView: View, Equatable {
     /// Using a let constant means the restore is immune to that race.
     let restorePageIndex: Int
 
+    /// When true, ignore geometry-derived current-page reports. WritingScreen
+    /// uses this only during page mutation restore phases so the legacy target
+    /// page is not overwritten by transient Continuous layout geometry.
+    let suppressesViewportTracking: Bool
+
     /// True when userZoom > 1.0. While zoomed, scrolling is disabled and the
     /// whole stack is scaled/offset by WritingScreen so the current page fills
     /// the viewport — there is NO separate overlay canvas. Finger panning is
@@ -95,6 +100,7 @@ struct ContinuousPagesView: View, Equatable {
         lhs.pages.map(\.id) == rhs.pages.map(\.id)
             && lhs.currentPageIndex == rhs.currentPageIndex
             && lhs.scrollTarget == rhs.scrollTarget
+            && lhs.suppressesViewportTracking == rhs.suppressesViewportTracking
             && lhs.isZoomed == rhs.isZoomed
             && lhs.restorePageIndex == rhs.restorePageIndex
             && lhs.paper.width == rhs.paper.width
@@ -215,6 +221,7 @@ struct ContinuousPagesView: View, Equatable {
                     // that freezes the pan. Ignore geometry-derived index changes
                     // while zoomed; the current page is fixed then.
                     guard !isZoomed else { return }
+                    guard !suppressesViewportTracking else { return }
                     currentPageIndex = newIdx
                 }
 

@@ -250,8 +250,9 @@ struct WritingScreen: View {
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
-            onScrollTargetConsumed: { scrollTarget = nil },
+            onScrollTargetConsumed: consumeScrollTarget,
             restorePageIndex: currentPageIndex,
+            suppressesViewportTracking: mutationPhase.suppressesViewportTracking,
             isZoomed: zoom.isZoomed,
             zoom: zoom
         )
@@ -279,8 +280,9 @@ struct WritingScreen: View {
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
-            onScrollTargetConsumed: { scrollTarget = nil },
+            onScrollTargetConsumed: consumeScrollTarget,
             restorePageIndex: currentPageIndex,
+            suppressesViewportTracking: mutationPhase.suppressesViewportTracking,
             zoomPrototype: prototype,
             resetToken: continuousNativeZoomResetToken,
             onZoomChange: prototype == .stack ? handleNativeStackZoom : nil
@@ -322,6 +324,16 @@ struct WritingScreen: View {
         #endif
     }
 
+    private func consumeScrollTarget() {
+        scrollTarget = nil
+        finishMutationPhaseIfNeeded()
+    }
+
+    private func finishMutationPhaseIfNeeded() {
+        guard mutationPhase.suppressesViewportTracking else { return }
+        mutationPhase = .idle
+    }
+
     // MARK: - Zoom reset
 
     /// The top-bar reset button. Single Page owns its zoom in the UIScrollView,
@@ -355,8 +367,13 @@ struct WritingScreen: View {
 
     private func handleAddPage() {
         let existingPageIDs = pages.compactMap(\.id)
+        let holdsPhaseForContinuousRestore = settings.paginationStyle == .continuous
         mutationPhase = .applyingPageMutation
-        defer { mutationPhase = .idle }
+        defer {
+            if !holdsPhaseForContinuousRestore {
+                mutationPhase = .idle
+            }
+        }
 
         let newPage = store.appendPage(to: document)
         pages = store.pages(of: document)
@@ -383,6 +400,9 @@ struct WritingScreen: View {
             currentPageIndex = newIndex
             // One-way scroll signal — ContinuousPagesView clears it after firing.
             scrollTarget = newPage.id
+            if newPage.id == nil {
+                finishMutationPhaseIfNeeded()
+            }
         }
 
         // No .activatingDrawing phase yet: add-page drawing activation still
@@ -419,8 +439,13 @@ struct WritingScreen: View {
         let pageToDelete = pages[deleteIndex]
         let existingPageIDs = pages.compactMap(\.id)
         let legacyNewIndex = max(0, deleteIndex - 1)
+        let holdsPhaseForContinuousRestore = settings.paginationStyle == .continuous
         mutationPhase = .applyingPageMutation
-        defer { mutationPhase = .idle }
+        defer {
+            if !holdsPhaseForContinuousRestore {
+                mutationPhase = .idle
+            }
+        }
 
         // dismantleUIView in PencilKitBridge flushes the departing page's
         // drawing before the PKCanvasView is torn down.
@@ -457,6 +482,9 @@ struct WritingScreen: View {
             currentPageIndex = safeIndex
             if safeIndex < newPages.count {
                 scrollTarget = newPages[safeIndex].id
+            }
+            if scrollTarget == nil {
+                finishMutationPhaseIfNeeded()
             }
         }
     }

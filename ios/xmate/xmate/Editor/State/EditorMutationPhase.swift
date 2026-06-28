@@ -1,11 +1,10 @@
 // EditorMutationPhase
 //
-// Inert phase vocabulary for future page mutation transactions.
+// Phase vocabulary for future page mutation transactions.
 //
-// Current stage: runtime views do not read this value yet. A later
-// PageMutationCoordinator migration can use it to temporarily suppress
-// viewport tracking, zoom tracking, and drawing activation while add/delete
-// transactions move through a single ordered sequence.
+// Current stage: WritingScreen uses this value only to suppress Continuous
+// current-page tracking while legacy add/delete flows restore their target
+// viewport. Zoom tracking and drawing activation are not gated by it yet.
 
 enum EditorMutationPhase: String, CaseIterable, Hashable {
     case idle

@@ -23,8 +23,9 @@
   LayoutPolicy now provide the current A4 portrait data, bridged back through
   PageGeometry so runtime behavior stays unchanged.
 - State/: inert EditorCommand / ViewportCommand / DrawingCommand values, plus
-  EditorMutationPhase, for future transaction-style viewport, zoom, mutation,
-  and activation flows.
+  EditorMutationPhase, for transaction-style viewport, zoom, mutation, and
+  activation flows. The phase currently guards only Continuous current-page
+  tracking during add/delete restore.
 - Mutation/: PageMutationCoordinator planner for future add/delete
   transactions. WritingScreen uses it only to confirm add/delete target
   planning today; WritingScreen still owns runtime page mutation.
@@ -80,9 +81,10 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
 - Command types are preparation only until a coordinator interprets them;
   do not bypass DrawingSessionManager or viewport invariants by dispatching
   ad-hoc side effects from the command model.
-- EditorMutationPhase is preparation only. Runtime views do not read it yet;
-  WritingScreen traces the add/delete-page flows with it, but it does not yet
-  guard current-page, zoom, or drawing-activation tracking during transactions.
+- EditorMutationPhase is partially live: WritingScreen keeps it active during
+  Continuous add/delete restore and Continuous views use it only to ignore
+  mutation-time current-page tracking callbacks. Do not use it to gate zoom
+  reporting or DrawingSessionManager activation yet.
 - PageMutationCoordinator is currently a pure planner, lightly bridged into
   WritingScreen for add/delete target selection only. Do not move storage
   mutation or side-effect ordering into it until the add/delete transaction is

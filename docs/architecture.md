@@ -93,14 +93,16 @@ array mutation, viewport reconciliation, zoom reset, displayed-page
 selection, and DrawingSessionManager activation can become one explicit,
 ordered transaction instead of scattered view state changes.
 
-`EditorMutationPhase` is an inert phase guard for those future
+`EditorMutationPhase` is the first narrow phase guard for those future
 transactions. Its phases are idle, planning page mutation, applying page
-mutation, restoring viewport, and activating drawing. WritingScreen now
-uses it as a non-authoritative trace around the add/delete-page legacy
-flows: apply/reload pages, confirm target planning, restore current index
-and scroll target, then return to idle. Runtime views do not read it yet,
-and it does not suppress current-page tracking, zoom tracking, or
-incidental drawing activation.
+mutation, restoring viewport, and activating drawing. WritingScreen uses it
+as a non-authoritative trace around the add/delete-page legacy flows:
+apply/reload pages, confirm target planning, then restore current index and
+scroll target. In Continuous, the phase remains active until the existing
+one-way scroll target is consumed, and Continuous page tracking ignores
+mutation-time geometry/current-page reports so they cannot overwrite the
+mutation target. The phase does not suppress zoom tracking or incidental
+drawing activation yet.
 
 `PageMutationCoordinator` is currently a pure planner. It models
 target-page selection for add/delete page transactions and returns the

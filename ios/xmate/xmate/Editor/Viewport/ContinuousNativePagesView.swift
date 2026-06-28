@@ -29,6 +29,7 @@ struct ContinuousNativePagesView: View {
     let scrollTarget: UUID?
     let onScrollTargetConsumed: () -> Void
     let restorePageIndex: Int
+    let suppressesViewportTracking: Bool
     let zoomPrototype: ContinuousNativeZoomPrototype
     let resetToken: Int
     let onZoomChange: ((CGFloat) -> Void)?
@@ -61,6 +62,7 @@ struct ContinuousNativePagesView: View {
                         displayedChanged: displayedChanged
                     )
                     guard displayedChanged else { return }
+                    guard !suppressesViewportTracking else { return }
                     if report.suppressesActivePromotion {
                         suppressNextActiveSync = true
                     }
