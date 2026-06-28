@@ -22,6 +22,8 @@
 - Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
   LayoutPolicy now provide the current A4 portrait data, bridged back through
   PageGeometry so runtime behavior stays unchanged.
+- State/: inert EditorCommand / ViewportCommand / DrawingCommand values for
+  future transaction-style viewport, zoom, mutation, and activation flows.
 - Diagnostics/: editor feature flags and trace/diagnostic helpers.
 - PageSurface/: reserved for future page-surface model work.
 
@@ -36,6 +38,7 @@
 - `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
   `PencilKit/DrawingSessionManager.swift`
 - `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`
+- `State/EditorCommand.swift`
 
 ## Not responsible for
 
@@ -69,5 +72,8 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   `paper.width/height` only.
 - Avoid bidirectional scroll bindings (`.scrollPosition(id:)` causes a
   snap loop); use the one-way `scrollTarget` UUID signal.
+- Command types are preparation only until a coordinator interprets them;
+  do not bypass DrawingSessionManager or viewport invariants by dispatching
+  ad-hoc side effects from the command model.
 - Page-turn/zoom changes must be device-tested (iPad 8 + Pencil 1)
   before being considered done.

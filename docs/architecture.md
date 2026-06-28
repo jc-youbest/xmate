@@ -84,6 +84,15 @@ and presentation style. Current runtime views still use their existing
 layout code through the `PageGeometry` compatibility bridge; the engine is
 being introduced before it becomes authoritative.
 
+`EditorCommand` / `ViewportCommand` / `DrawingCommand` are inert command
+values that describe future editor transactions such as scroll-to-page,
+zoom reset, page selection, viewport-anchor preservation, and drawing
+activation. They are not dispatched by the runtime yet. Their purpose is
+to prepare PageMutationCoordinator and the zoomed add/delete fix so page
+array mutation, viewport reconciliation, zoom reset, displayed-page
+selection, and DrawingSessionManager activation can become one explicit,
+ordered transaction instead of scattered view state changes.
+
 ## Page surface layering
 
 `PageSurface` is the editor's shared page rendering container. Its layer
