@@ -12,6 +12,10 @@
 - PencilKit/: the PencilKit stack: PencilKitBridge (canvas + finger recognizers),
   ToolPickerHost (single PKToolPicker, convergent tool push),
   DrawingSessionManager (one authoritative canvas per Page, save gating).
+  PencilKit is the handwriting layer, not the whole page surface.
+- PageSurface/: PageSurface, the layer-ready page container: plain page
+  background today, future content-object and overlay layers later, and the
+  PencilKit drawing layer in between.
 - Layout/: PageGeometry: PaperSize / PaperPreset catalogue / fit scale.
 - Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
   LayoutPolicy now provide the current A4 portrait data, bridged back through
@@ -26,6 +30,7 @@
   `Viewport/ContinuousNativePagesView.swift`, `Viewport/ZoomablePage.swift`,
   `Viewport/PageZoom.swift`
 - `Layout/PageGeometry.swift`
+- `PageSurface/PageSurface.swift`
 - `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
   `PencilKit/DrawingSessionManager.swift`
 - `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`

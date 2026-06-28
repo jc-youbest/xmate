@@ -273,17 +273,19 @@ struct ContinuousPagesView: View, Equatable {
                 zoom.panEnded(velocity: v, halfOverflow: halfOverflow(in: viewport))
             } : nil
 
-            PencilKitBridge(
-                page: page,
-                store: store,
-                role: .continuous,
-                // false → no UISwipeGestureRecognizers added
-                // (they fight the ScrollView pan)
-                enableSwipeNavigation: false,
-                onFingerDoubleTap: { print("[DT-CONT] closure -> zoom.resetAnimated()"); zoom.resetAnimated() },  // TEMP DT-DIAG
-                fingerPanChanged: panChanged,
-                fingerPanEnded: panEnded
-            )
+            PageSurface {
+                PencilKitBridge(
+                    page: page,
+                    store: store,
+                    role: .continuous,
+                    // false → no UISwipeGestureRecognizers added
+                    // (they fight the ScrollView pan)
+                    enableSwipeNavigation: false,
+                    onFingerDoubleTap: { print("[DT-CONT] closure -> zoom.resetAnimated()"); zoom.resetAnimated() },  // TEMP DT-DIAG
+                    fingerPanChanged: panChanged,
+                    fingerPanEnded: panEnded
+                )
+            }
             // Frame 1: logical paper dimensions — PencilKit records strokes
             // in this coordinate space, preserving them across all iPad sizes.
             .frame(width: paper.width, height: paper.height)

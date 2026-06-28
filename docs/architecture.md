@@ -77,6 +77,14 @@ portrait, but the data now flows through `PageSpec` / `PageSize` /
 `PaperSize` runtime path. Per-document paper still waits for the Core
 Data migration.
 
+## Page surface layering
+
+`PageSurface` is the editor's shared page rendering container. Its layer
+order is: page background, future content objects, PencilKit drawing, then
+future overlays / selection UI. Current behavior renders only the same
+plain white page background plus the existing PencilKit drawing layer.
+PencilKit is therefore an ink layer on the page, not the whole page model.
+
 ## PencilKit canvas principles
 
 These invariants were earned through device debugging; do not regress
