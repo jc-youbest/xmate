@@ -87,6 +87,7 @@ struct WritingScreen: View {
 
     @State private var pages: [Page] = []
     @State private var currentPageIndex: Int = 0
+    @State private var mutationPhase: EditorMutationPhase = .idle
 
     /// One-way scroll signal for Continuous mode Add Page.
     /// WritingScreen sets this to the new page's UUID; ContinuousPagesView
@@ -354,15 +355,21 @@ struct WritingScreen: View {
 
     private func handleAddPage() {
         let existingPageIDs = pages.compactMap(\.id)
+        mutationPhase = .applyingPageMutation
+        defer { mutationPhase = .idle }
+
         let newPage = store.appendPage(to: document)
         pages = store.pages(of: document)
         let legacyNewIndex = pages.count - 1
+
+        mutationPhase = .planningPageMutation
         let newIndex = plannedAddPageTargetIndex(
             newPage: newPage,
             existingPageIDs: existingPageIDs,
             fallbackIndex: legacyNewIndex
         )
 
+        mutationPhase = .restoringViewport
         switch settings.paginationStyle {
         case .singlePage:
             // Carousel: animating the index slides the new page in; the
@@ -377,6 +384,10 @@ struct WritingScreen: View {
             // One-way scroll signal — ContinuousPagesView clears it after firing.
             scrollTarget = newPage.id
         }
+
+        // No .activatingDrawing phase yet: add-page drawing activation still
+        // happens indirectly through the existing viewport/DrawingSessionManager
+        // callbacks after currentPageIndex / scrollTarget change.
     }
 
     private func plannedAddPageTargetIndex(

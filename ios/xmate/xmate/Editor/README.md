@@ -81,8 +81,8 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   do not bypass DrawingSessionManager or viewport invariants by dispatching
   ad-hoc side effects from the command model.
 - EditorMutationPhase is preparation only. Runtime views do not read it yet;
-  it will later guard current-page, zoom, and drawing-activation tracking
-  during add/delete transactions.
+  WritingScreen traces the add-page flow with it, but it does not yet guard
+  current-page, zoom, or drawing-activation tracking during transactions.
 - PageMutationCoordinator is currently a pure planner, lightly bridged into
   WritingScreen for add/delete target selection only. Do not move storage
   mutation or side-effect ordering into it until the add/delete transaction is
