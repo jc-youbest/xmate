@@ -2,24 +2,32 @@
 
 ## Responsibilities
 
-- WritingScreen: the Writing-Mode variant of the Content Screen.
-- Both Pagination Styles: SinglePagesView (persistent offset carousel,
+- Screen/: WritingScreen, the Writing-Mode variant of the Content Screen,
+  plus WritingTopBar.
+- Viewport/: both Pagination Styles: SinglePagesView (persistent offset carousel,
   flips animate offsets only — zero canvas recreation) and
-  ContinuousPagesView (free-scroll plain VStack — never Lazy, the
-  PKToolPicker needs window-attached canvases).
-- Whole-page zoom 1×–3× (PageZoom: state/gesture math + ZoomHUD).
-- The PencilKit stack: PencilKitBridge (canvas + finger recognizers),
+  ContinuousPagesView / ContinuousNativePagesView.
+- Viewport/: whole-page zoom 1×–3× (PageZoom: state/gesture math +
+  ZoomHUD) and ZoomablePage (Single Page native UIScrollView zoom).
+- PencilKit/: the PencilKit stack: PencilKitBridge (canvas + finger recognizers),
   ToolPickerHost (single PKToolPicker, convergent tool push),
   DrawingSessionManager (one authoritative canvas per Page, save gating).
-- PageGeometry: PaperSize / PaperPreset catalogue / fit scale.
+- Layout/: PageGeometry: PaperSize / PaperPreset catalogue / fit scale.
+- Model/ and Configuration/: lightweight future editor vocabulary only;
+  not wired into runtime behavior yet.
+- Diagnostics/: editor feature flags and trace/diagnostic helpers.
+- PageSurface/: reserved for future page-surface model work.
 
 ## Key files
 
-- `WritingScreen.swift`, `WritingTopBar.swift`
-- `SinglePagesView.swift`, `ContinuousPagesView.swift`
-- `PageZoom.swift`, `PageGeometry.swift`
-- `PencilKitBridge.swift`, `ToolPickerHost.swift`,
-  `DrawingSessionManager.swift`
+- `Screen/WritingScreen.swift`, `Screen/WritingTopBar.swift`
+- `Viewport/SinglePagesView.swift`, `Viewport/ContinuousPagesView.swift`,
+  `Viewport/ContinuousNativePagesView.swift`, `Viewport/ZoomablePage.swift`,
+  `Viewport/PageZoom.swift`
+- `Layout/PageGeometry.swift`
+- `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
+  `PencilKit/DrawingSessionManager.swift`
+- `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`
 
 ## Not responsible for
 
