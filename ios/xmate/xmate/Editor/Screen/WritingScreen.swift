@@ -419,12 +419,16 @@ struct WritingScreen: View {
         let pageToDelete = pages[deleteIndex]
         let existingPageIDs = pages.compactMap(\.id)
         let legacyNewIndex = max(0, deleteIndex - 1)
+        mutationPhase = .applyingPageMutation
+        defer { mutationPhase = .idle }
 
         // dismantleUIView in PencilKitBridge flushes the departing page's
         // drawing before the PKCanvasView is torn down.
         store.deletePage(pageToDelete, from: document)
         let newPages = store.pages(of: document)
         let legacySafeIndex = min(legacyNewIndex, newPages.count - 1)
+
+        mutationPhase = .planningPageMutation
         let safeIndex = plannedDeletePageTargetIndex(
             deletedPage: pageToDelete,
             existingPageIDs: existingPageIDs,
@@ -432,6 +436,7 @@ struct WritingScreen: View {
             fallbackIndex: legacySafeIndex
         )
 
+        mutationPhase = .restoringViewport
         switch settings.paginationStyle {
         case .singlePage:
             // Carousel: removing the page from the ForEach and animating the

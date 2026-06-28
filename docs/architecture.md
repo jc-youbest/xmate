@@ -96,11 +96,11 @@ ordered transaction instead of scattered view state changes.
 `EditorMutationPhase` is an inert phase guard for those future
 transactions. Its phases are idle, planning page mutation, applying page
 mutation, restoring viewport, and activating drawing. WritingScreen now
-uses it as a non-authoritative trace around the add-page legacy flow:
-apply/reload pages, confirm target planning, restore current index /
-scroll target, then return to idle. Runtime views do not read it yet, and
-it does not suppress current-page tracking, zoom tracking, or incidental
-drawing activation.
+uses it as a non-authoritative trace around the add/delete-page legacy
+flows: apply/reload pages, confirm target planning, restore current index
+and scroll target, then return to idle. Runtime views do not read it yet,
+and it does not suppress current-page tracking, zoom tracking, or
+incidental drawing activation.
 
 `PageMutationCoordinator` is currently a pure planner. It models
 target-page selection for add/delete page transactions and returns the
