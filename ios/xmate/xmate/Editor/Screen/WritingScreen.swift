@@ -56,10 +56,10 @@
 // Delete document (v1 stub): resets to a single blank page. F-011 will
 // replace this with navigation to NoteListScreen in v3.
 //
-// Paper: hard-coded to PaperPreset.letter for now. Per-document paper
-// arrives with a Core Data migration in a later increment; nothing in the
-// pagination / zoom layers branches on the paper's name, so that increment
-// only swaps where `paper` comes from.
+// Paper: still fixed to the current document PageSpec (A4 portrait, vertical)
+// until the per-document Core Data migration lands. The spec is adapted through
+// PageGeometry into the existing PaperSize runtime type so the current views
+// keep their behavior exactly.
 
 import SwiftUI
 
@@ -71,9 +71,17 @@ struct WritingScreen: View {
     /// (AppRoot). See file header.
     let document: Document
 
-    /// Stage limitation: per-document paper lands with the Core Data
-    /// migration. Everything below derives behaviour from this value alone.
-    private let paper = PaperPreset.letter
+    /// Stage limitation: per-document paper lands with the Core Data migration.
+    /// The new v2 model now owns the current A4 portrait data, but existing
+    /// viewport code still consumes PaperSize through PageGeometry's bridge.
+    private let editorConfiguration = EditorConfiguration.currentDefault
+
+    private var paper: PaperSize {
+        PageGeometry.paperSize(
+            for: editorConfiguration.pageSpec,
+            layoutPolicy: editorConfiguration.layoutPolicy
+        )
+    }
 
     // MARK: - State
 

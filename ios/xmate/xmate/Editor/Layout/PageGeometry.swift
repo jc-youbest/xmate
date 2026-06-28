@@ -20,9 +20,10 @@
 // live as static data so adding a new paper kind requires only one
 // new entry in the preset catalogue.
 //
-// Stage 2 (roadmap v1) writes on PaperPreset.letter only. Postcard
-// and any other preset arrive later with the Core Data migration that
-// records a document's paper dimensions per-document.
+// v2 layout migration note: PageSpec / PageSize / LayoutPolicy are being wired
+// in incrementally. This file remains the compatibility bridge so existing
+// viewport code can continue consuming PaperSize while the new model becomes
+// the source of page-size data.
 
 import Foundation
 import CoreGraphics
@@ -92,6 +93,17 @@ enum PaperPreset {
 }
 
 enum PageGeometry {
+
+    /// Compatibility adapter from the v2 page spec into the legacy PaperSize
+    /// consumed by today's Single / Continuous view implementations.
+    static func paperSize(for spec: PageSpec,
+                          layoutPolicy: LayoutPolicy = LayoutPolicy()) -> PaperSize {
+        // The policy is accepted now so future fit/flow choices can be routed
+        // through this bridge without changing call sites. Current behavior only
+        // depends on the fixed logical size.
+        _ = layoutPolicy
+        return PaperSize(width: spec.size.width, height: spec.size.height)
+    }
 
     /// Uniform scale that fits a paper inside the given viewport while
     /// preserving aspect ratio. Returns 1.0 when the viewport is empty

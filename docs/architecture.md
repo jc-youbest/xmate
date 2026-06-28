@@ -71,8 +71,11 @@ branches on a paper's name.** New presets are catalogue entries only.
 Logical page size never changes with device; every iPad scales the page
 uniformly to fit, and handwriting never reflows.
 
-Current stage limitation: `paper` is hard-coded to `PaperPreset.letter`
-in WritingScreen until the per-document paper Core Data migration.
+Current stage limitation: the document page spec is still fixed to A4
+portrait, but the data now flows through `PageSpec` / `PageSize` /
+`LayoutPolicy` and is adapted by `PageGeometry` back into the existing
+`PaperSize` runtime path. Per-document paper still waits for the Core
+Data migration.
 
 ## PencilKit canvas principles
 

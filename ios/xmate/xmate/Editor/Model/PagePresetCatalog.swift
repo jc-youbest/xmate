@@ -1,13 +1,21 @@
 // PagePresetCatalog
 //
-// Future editor-facing preset catalogue. Kept separate from the active
-// PaperPreset runtime catalogue until the layout migration is deliberate.
+// Editor-facing preset catalogue.
+//
+// Only `currentDocumentPageSpec` is used by the runtime today, preserving the
+// existing A4 portrait vertical behavior. Other presets remain data only until
+// landscape/postcard support is intentionally wired.
 
 enum PagePresetCatalog {
     static let a4Portrait = PageSpec(
-        size: PageSize(width: 595, height: 842),
+        size: .a4Portrait,
         flowAxis: .vertical
     )
+
+    /// Temporary v2 bridge: the current document/page paper specification.
+    /// Replaces WritingScreen's direct PaperPreset.letter dependency without
+    /// changing the visible page size or pagination direction.
+    static let currentDocumentPageSpec = a4Portrait
 
     static let a4Landscape = PageSpec(
         size: PageSize(width: 842, height: 595),
@@ -24,4 +32,3 @@ enum PagePresetCatalog {
         flowAxis: .horizontal
     )
 }
-

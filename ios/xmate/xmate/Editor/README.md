@@ -13,8 +13,9 @@
   ToolPickerHost (single PKToolPicker, convergent tool push),
   DrawingSessionManager (one authoritative canvas per Page, save gating).
 - Layout/: PageGeometry: PaperSize / PaperPreset catalogue / fit scale.
-- Model/ and Configuration/: lightweight future editor vocabulary only;
-  not wired into runtime behavior yet.
+- Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
+  LayoutPolicy now provide the current A4 portrait data, bridged back through
+  PageGeometry so runtime behavior stays unchanged.
 - Diagnostics/: editor feature flags and trace/diagnostic helpers.
 - PageSurface/: reserved for future page-surface model work.
 
