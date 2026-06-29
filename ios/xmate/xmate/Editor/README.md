@@ -25,7 +25,9 @@
 - State/: inert EditorCommand / ViewportCommand / DrawingCommand values, plus
   EditorMutationPhase, for transaction-style viewport, zoom, mutation, and
   activation flows. The phase currently guards only Continuous current-page
-  tracking during add/delete restore.
+  tracking during add/delete restore. EditorViewportState /
+  EditorOperationPhase / EditorEvent model the future reset-before-structural
+  operation state machine.
 - Mutation/: PageMutationCoordinator planner for future add/delete
   transactions. WritingScreen uses it only to confirm add/delete target
   planning today; WritingScreen still owns runtime page mutation. The planner
@@ -44,7 +46,8 @@
 - `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
   `PencilKit/DrawingSessionManager.swift`
 - `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`
-- `State/EditorCommand.swift`, `State/EditorMutationPhase.swift`
+- `State/EditorCommand.swift`, `State/EditorMutationPhase.swift`,
+  `State/EditorOperationState.swift`
 - `Mutation/PageMutationCoordinator.swift`
 
 ## Not responsible for
@@ -82,6 +85,11 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
 - Command types are preparation only until a coordinator interprets them;
   do not bypass DrawingSessionManager or viewport invariants by dispatching
   ad-hoc side effects from the command model.
+- Structural editor operations require a normal viewport. If Add Page, Delete
+  Page, future reorder/duplicate/template/image operations are requested while
+  zoomed, the future transaction must request zoom reset, wait for reset
+  completion or no-op completion at 100%, then mutate and restore the viewport
+  target. Do not reintroduce reset-token hacks during or after mutation.
 - EditorMutationPhase is partially live: WritingScreen keeps it active during
   Continuous add/delete restore and Continuous views use it only to ignore
   mutation-time current-page tracking callbacks. Do not use it to gate zoom
@@ -92,6 +100,8 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   intentionally migrated.
 - PageMutationPolicy / MutationZoomPolicy are preparation only. They can model
   "reset Continuous stack zoom before add/delete" as a future command, but
-  WritingScreen does not dispatch that command yet.
+  WritingScreen does not dispatch that command yet. The failed add-page runtime
+  reset bridge should stay reverted until the operation state machine owns the
+  full reset-before-mutation transaction.
 - Page-turn/zoom changes must be device-tested (iPad 8 + Pencil 1)
   before being considered done.

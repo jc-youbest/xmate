@@ -93,6 +93,13 @@ array mutation, viewport reconciliation, zoom reset, displayed-page
 selection, and DrawingSessionManager activation can become one explicit,
 ordered transaction instead of scattered view state changes.
 
+`EditorViewportState` / `EditorOperationPhase` / `EditorEvent` are inert
+state-machine vocabulary for the same migration. They record the editor rule
+that structural operations require a normal viewport. If an operation is
+requested while zoomed, the future transaction waits for a zoom-reset event
+before applying the operation and restoring the viewport target. The current
+runtime does not interpret these values yet.
+
 `EditorMutationPhase` is the first narrow phase guard for those future
 transactions. Its phases are idle, planning page mutation, applying page
 mutation, restoring viewport, and activating drawing. WritingScreen uses it
@@ -111,12 +118,12 @@ use. WritingScreen now consults it only to confirm add/delete target
 selection after the legacy page mutation and page reload have happened,
 with fallbacks to the legacy append-to-end and delete-neighbor indexes if
 the planner ever disagrees. `PageMutationPolicy` / `MutationZoomPolicy`
-can describe an unused future zoom command, including "reset Continuous
-stack zoom before add/delete when currently zoomed." WritingScreen still
-performs the actual add/delete runtime behavior directly and does not
-dispatch that zoom command yet; the planner exists so the later zoomed
-add/delete fix can move page mutation, viewport restoration, zoom reset,
-and activation as one transaction.
+can describe an unused future zoom command, but WritingScreen must not
+dispatch it directly from page mutation yet. Device testing showed that
+mutation-time reset tokens leave per-page and Continuous native scroll-view
+state inconsistent. The planner exists so the later zoomed add/delete fix can
+move page mutation, viewport restoration, zoom reset, and activation as one
+operation-state-machine transaction.
 
 ## Page surface layering
 
@@ -197,6 +204,43 @@ double-tap or the top-bar zoom-reset button (live percentage while
 zoomed); a transient centered ZoomHUD reports the percentage and
 auto-fades. *Rejected:* free-panning / infinite canvas — xmate is
 bounded stationery, not a whiteboard.
+
+### Structural operations and viewport state
+
+The editor has two user-facing viewport states for transaction purposes:
+**normal** (100%, stable content size/offset) and **zoomed** (owned by Single
+Page, Continuous native stack, or the legacy Continuous transform path).
+Zoomed state still allows zoom, pan, handwriting, explicit reset zoom, and
+supported Continuous browsing/scrolling. It does not allow structural
+document/page operations to execute immediately.
+
+Structural operations include add page, delete page, future duplicate/reorder,
+page size or orientation changes, page background/template changes, and first
+implementation foreground object/image insertion. These operations require a
+normal viewport because they mutate the page array, page geometry, or page
+surface layers underneath scroll/zoom owners. Running them during or before a
+settled zoom reset corrupts navigation state.
+
+Rule: when a structural operation is requested while zoomed, enqueue the
+operation, request zoom reset first, wait for zoom-reset completion, then apply
+the operation, restore its viewport target, and return to idle. If the viewport
+is already at 100%, reset is an idempotent no-op completion and the operation
+can proceed immediately.
+
+Reset zoom is therefore an editor command/event, not only a UI gesture. The
+same command vocabulary must cover finger double-tap reset, toolbar reset,
+add/delete preconditions, future template/object insertion preconditions,
+tests, and recovery. Future implementations should route these through the
+operation state machine instead of firing reset tokens during or after a page
+mutation.
+
+*Rejected:* resetting Continuous native stack zoom from Add Page while also
+mutating pages and restoring `scrollTarget`. Device testing made the page look
+visually reset, but left internal `UIScrollView` content size/offset state
+inconsistent and made the new page unreachable until mode switching. Single
+Page also showed that per-page `ZoomablePage` state can remain zoomed on the
+old page after Add Page. Reset-before-operation must be completed or treated as
+already complete before any structural mutation begins.
 
 ### Single Page zoomed edit-menu arbitration
 
