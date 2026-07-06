@@ -33,6 +33,7 @@ struct ContinuousNativePagesView: View {
     let zoomPrototype: ContinuousNativeZoomPrototype
     let resetToken: Int
     let onZoomChange: ((CGFloat) -> Void)?
+    let onZoomResetRequested: (() -> Void)?
 
     private let gapPt: CGFloat = 20
     @StateObject private var diagnostics = ContinuousNativeSessionDiagnostics()
@@ -54,6 +55,7 @@ struct ContinuousNativePagesView: View {
                 zoomPrototype: zoomPrototype,
                 resetToken: resetToken,
                 onZoomChange: onZoomChange,
+                onZoomResetRequested: onZoomResetRequested,
                 diagnostics: diagnostics,
                 onCurrentPageChange: { report in
                     let displayedChanged = report.index != currentPageIndex
@@ -117,6 +119,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     let zoomPrototype: ContinuousNativeZoomPrototype
     let resetToken: Int
     let onZoomChange: ((CGFloat) -> Void)?
+    let onZoomResetRequested: (() -> Void)?
     let diagnostics: ContinuousNativeSessionDiagnostics
     let onCurrentPageChange: (ContinuousNativePageReport) -> Void
     let onScrollTargetConsumed: () -> Void
@@ -127,7 +130,8 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
             content: content,
             diagnostics: diagnostics,
             zoomPrototype: zoomPrototype,
-            onZoomChange: onZoomChange
+            onZoomChange: onZoomChange,
+            onZoomResetRequested: onZoomResetRequested
         )
         controller.configure(
             pageIDs: pages.compactMap(\.id),
@@ -143,6 +147,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: ContinuousNativeScrollController,
                                 context: Context) {
         controller.updateContent(makeContent())
+        controller.updateZoomResetHandler(onZoomResetRequested)
         controller.configure(
             pageIDs: pages.compactMap(\.id),
             pageHeight: paper.height * fitScale,
@@ -771,6 +776,7 @@ private final class ContinuousNativeScrollController: UIViewController,
     private var lastHandledResetToken: Int = 0
     private var onCurrentPageChange: ((ContinuousNativePageReport) -> Void)?
     private var onZoomChange: ((CGFloat) -> Void)?
+    private var onZoomResetRequested: (() -> Void)?
 
     private var didRestoreInitialPosition = false
     private var lastReportedIndex: Int?
@@ -804,11 +810,13 @@ private final class ContinuousNativeScrollController: UIViewController,
     init(content: ContinuousNativePageStack,
          diagnostics: ContinuousNativeSessionDiagnostics,
          zoomPrototype: ContinuousNativeZoomPrototype,
-         onZoomChange: ((CGFloat) -> Void)?) {
+         onZoomChange: ((CGFloat) -> Void)?,
+         onZoomResetRequested: (() -> Void)?) {
         host = UIHostingController(rootView: content)
         self.diagnostics = diagnostics
         self.zoomPrototype = zoomPrototype
         self.onZoomChange = onZoomChange
+        self.onZoomResetRequested = onZoomResetRequested
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -994,6 +1002,10 @@ private final class ContinuousNativeScrollController: UIViewController,
             return
         }
 
+        if let onZoomResetRequested {
+            onZoomResetRequested()
+            return
+        }
         stackResetInProgress = true
         #if DEBUG
         print("[CONT-STACK-RESET] setZoomScale 1.0 animated=true")
@@ -1144,6 +1156,10 @@ private final class ContinuousNativeScrollController: UIViewController,
         self.resetToken = resetToken
         self.onCurrentPageChange = onCurrentPageChange
         handleResetTokenIfNeeded()
+    }
+
+    func updateZoomResetHandler(_ handler: (() -> Void)?) {
+        onZoomResetRequested = handler
     }
 
     func handleScrollTarget(_ target: UUID?, consumed: @escaping () -> Void) {

@@ -17,8 +17,8 @@
 //   • Double-tap (finger) resets to fit.
 //
 // Pilot scope: it owns all zoom interaction itself; PageZoomModel is NOT used
-// here. Top-bar percentage / HUD / reset-button wiring for Single is deferred
-// until the architecture is validated on device.
+// here. Zoom state is reported up to WritingScreen for the top bar, HUD, and
+// virtual editor reset events.
 
 import SwiftUI
 import PencilKit
@@ -76,8 +76,10 @@ struct ZoomablePage: UIViewRepresentable {
     /// Reports the current zoom as a 1.0…3.0 multiple of fit, for the HUD /
     /// top-bar percentage. Display only — does not drive any layout here.
     var onZoomChange: ((CGFloat) -> Void)?
-    /// Bumped by the top-bar reset button to zoom back to fit (double-tap
-    /// resets in-component, so it does not use this).
+    /// Finger double-tap reset request, routed to WritingScreen's editor event
+    /// bridge when present.
+    var onZoomResetRequested: (() -> Void)?
+    /// Bumped by the editor reset bridge to zoom back to fit.
     var resetToken: Int = 0
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -155,6 +157,10 @@ struct ZoomablePage: UIViewRepresentable {
         @objc func handleDoubleTap(_ r: UITapGestureRecognizer) {
             guard let sv = scrollView,
                   sv.zoomScale > sv.minimumZoomScale + 0.0001 else { return }
+            if let onZoomResetRequested = parent.onZoomResetRequested {
+                onZoomResetRequested()
+                return
+            }
             sv.setZoomScale(sv.minimumZoomScale, animated: true)
         }
 

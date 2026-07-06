@@ -50,6 +50,8 @@ struct SinglePagesView: View, Equatable {
 
     /// Reports the current page's zoom (1.0…3.0 × fit) for the HUD / top bar.
     let onZoomChange: ((CGFloat) -> Void)?
+    /// Finger double-tap reset request, routed back to WritingScreen's editor event bridge.
+    let onZoomResetRequested: (() -> Void)?
     /// Bumped by the top-bar reset button to zoom the current page back to fit.
     let resetToken: Int
 
@@ -106,6 +108,7 @@ struct SinglePagesView: View, Equatable {
                         onSwipeForward: handleSwipeForward,
                         onSwipeBackward: handleSwipeBackward,
                         onZoomChange: onZoomChange,
+                        onZoomResetRequested: onZoomResetRequested,
                         resetToken: resetToken
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)

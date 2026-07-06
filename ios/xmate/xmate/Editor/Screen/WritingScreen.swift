@@ -188,6 +188,9 @@ struct WritingScreen: View {
                                 store: store,
                                 currentPageIndex: $currentPageIndex,
                                 onZoomChange: { zoom.setDisplayZoom($0) },
+                                onZoomResetRequested: {
+                                    handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+                                },
                                 resetToken: zoomResetToken)
                     .equatable()
             case .continuous:
@@ -254,7 +257,10 @@ struct WritingScreen: View {
             restorePageIndex: currentPageIndex,
             suppressesViewportTracking: mutationPhase.suppressesViewportTracking,
             isZoomed: zoom.isZoomed,
-            zoom: zoom
+            zoom: zoom,
+            onZoomResetRequested: {
+                handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+            }
         )
         .equatable()
         .scaleEffect(zoom.userZoom)
@@ -285,7 +291,10 @@ struct WritingScreen: View {
             suppressesViewportTracking: mutationPhase.suppressesViewportTracking,
             zoomPrototype: prototype,
             resetToken: continuousNativeZoomResetToken,
-            onZoomChange: prototype == .stack ? handleNativeStackZoom : nil
+            onZoomChange: prototype == .stack ? handleNativeStackZoom : nil,
+            onZoomResetRequested: {
+                handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+            }
         )
     }
 

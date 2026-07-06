@@ -78,10 +78,12 @@ struct ContinuousPagesView: View, Equatable {
     /// view must not re-render when `userZoom`/`panOffset` change every frame
     /// (that was the per-frame updateUIView storm). The live transform is
     /// applied by WritingScreen as a container modifier; here `zoom` is used
-    /// only to wire the current page's finger-pan and double-tap to the model.
+    /// only to wire the current page's finger pan to the model.
     /// `isZoomed` (a plain Bool compared in `==`) is what re-renders this view
     /// when zoom crosses the 1.0 boundary, to enable/disable the pan recogniser.
     let zoom: PageZoomModel
+    /// Finger double-tap reset request, routed back to WritingScreen's editor event bridge.
+    let onZoomResetRequested: () -> Void
 
     // MARK: - Constants
 
@@ -288,7 +290,7 @@ struct ContinuousPagesView: View, Equatable {
                     // false → no UISwipeGestureRecognizers added
                     // (they fight the ScrollView pan)
                     enableSwipeNavigation: false,
-                    onFingerDoubleTap: { print("[DT-CONT] closure -> zoom.resetAnimated()"); zoom.resetAnimated() },  // TEMP DT-DIAG
+                    onFingerDoubleTap: onZoomResetRequested,
                     fingerPanChanged: panChanged,
                     fingerPanEnded: panEnded
                 )
