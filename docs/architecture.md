@@ -234,17 +234,21 @@ supported Continuous browsing/scrolling. It does not allow structural
 document/page operations to execute immediately.
 
 Structural operations include add page, delete page, future duplicate/reorder,
-page size or orientation changes, page background/template changes, and first
-implementation foreground object/image insertion. These operations require a
-normal viewport because they mutate the page array, page geometry, or page
-surface layers underneath scroll/zoom owners. Running them during or before a
-settled zoom reset corrupts navigation state.
+page size or orientation changes, page background/template/theme changes, and
+first implementation foreground object/image insertion. These operations
+require a normal viewport because they mutate the page array, page geometry,
+scroll content size, or page surface layers underneath scroll/zoom owners.
+Running them during or before a settled zoom reset corrupts navigation state.
 
 Rule: when a structural operation is requested while zoomed, enqueue the
 operation, request zoom reset first, wait for zoom-reset completion, then apply
-the operation, restore its viewport target, and return to idle. If the viewport
-is already at 100%, reset is an idempotent no-op completion and the operation
-can proceed immediately.
+the operation, recalculate affected layout/content-size state, restore its
+viewport target, and return to idle. If the viewport is already at 100%, reset
+is an idempotent no-op completion and the operation can proceed immediately.
+This is an editor-level transaction rule, not an Add Page special case. Any
+future operation whose behavior depends on page geometry, scroll bounds, active
+canvas ownership, or page-surface composition must reuse this state-machine
+path.
 
 Reset zoom is therefore an editor command/event, not only a UI gesture. The
 same command vocabulary must cover finger double-tap reset, toolbar reset,
@@ -259,9 +263,22 @@ double-tap reset requests now route through `EditorEvent.resetZoomRequested`
 before dispatching the existing reset token or PageZoom reset. This bridge
 covers Single Page, legacy Continuous transform zoom, and native Continuous
 `.stack`; the native `.perPage` prototype remains a comparison path without a
-single editor-level zoom owner. Add Page now uses the reset-before-operation
-state-machine path before invoking the existing add-page mutation body. Delete
-Page still uses its legacy direct handler.
+single editor-level zoom owner.
+
+Add Page is the first structural operation routed through this rule in both
+Single Page and native Continuous stack. In both modes, a zoomed Add Page is
+planned as: observe zoomed viewport, park the pending operation, reset the
+owning zoom viewport to normal, wait for reset completion on a safe main-actor
+turn, run the existing page-creation mutation, refresh page/layout state, and
+restore the target to the newly added page. Continuous additionally updates
+the native stack content-height constraint so `UIScrollView.contentSize`
+matches the new page count before the final scroll target is expected to be
+reachable. Single Page additionally keeps only the current page hit-testable
+and delays Pencil input for one short activation window after the new page is
+selected so PencilKit/ToolPicker handoff settles before writing resumes.
+Delete Page still uses its legacy direct handler, but it is a structural
+operation and must move onto this same reset-before-operation path before its
+zoomed behavior is considered complete.
 
 *Rejected:* resetting Continuous native stack zoom from Add Page while also
 mutating pages and restoring `scrollTarget`. Device testing made the page look
