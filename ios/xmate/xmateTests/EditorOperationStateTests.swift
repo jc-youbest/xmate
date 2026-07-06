@@ -54,6 +54,50 @@ struct EditorOperationStateTests {
         #expect(!transition.events.contains(.resetZoomRequested(reason: .beforeDeletePage)))
     }
 
+    @Test func userResetOnNormalViewportCompletesAsNoOp() {
+        let transition = EditorOperationStateMachine.handle(
+            .resetZoomRequested(reason: .toolbar),
+            phase: .idle,
+            viewportState: .normal
+        )
+
+        #expect(transition.phase == .idle)
+        #expect(transition.viewportState == .normal)
+        #expect(transition.events == [.zoomResetCompleted])
+    }
+
+    @Test func userResetOnZoomedViewportRequestsOwnerReset() {
+        let transition = EditorOperationStateMachine.handle(
+            .resetZoomRequested(reason: .userGesture),
+            phase: .idle,
+            viewportState: .zoomed(owner: .continuousStack)
+        )
+
+        #expect(transition.phase == .idle)
+        #expect(transition.viewportState == .resettingZoom(
+            owner: .continuousStack,
+            reason: .userGesture
+        ))
+        #expect(transition.events == [
+            .resetZoomRequested(reason: .userGesture),
+        ])
+    }
+
+    @Test func userResetCompletionReturnsIdleViewportToNormal() {
+        let transition = EditorOperationStateMachine.handle(
+            .zoomResetCompleted,
+            phase: .idle,
+            viewportState: .resettingZoom(
+                owner: .singlePage,
+                reason: .toolbar
+            )
+        )
+
+        #expect(transition.phase == .idle)
+        #expect(transition.viewportState == .normal)
+        #expect(transition.events.isEmpty)
+    }
+
     @Test func observedViewportMapsSinglePageZoomOwner() {
         let state = EditorViewportState.observed(
             paginationStyle: .singlePage,

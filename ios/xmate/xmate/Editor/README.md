@@ -94,6 +94,10 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   existing zoom signals: Single Page, native Continuous stack, and legacy
   Continuous transform. Native Continuous per-page prototype is not a reliable
   operation-level owner yet. Add/delete do not consume this bridge yet.
+- The top-bar reset button is the first `EditorEvent` runtime bridge:
+  WritingScreen maps it to `resetZoomRequested(.toolbar)` and then dispatches
+  the existing owner-specific reset mechanism. Viewport-local double-tap reset
+  paths remain inside their viewport implementations for now.
 - EditorMutationPhase is partially live: WritingScreen keeps it active during
   Continuous add/delete restore and Continuous views use it only to ignore
   mutation-time current-page tracking callbacks. Do not use it to gate zoom

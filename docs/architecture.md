@@ -98,7 +98,11 @@ state-machine vocabulary for the same migration. They record the editor rule
 that structural operations require a normal viewport. If an operation is
 requested while zoomed, the future transaction waits for a zoom-reset event
 before applying the operation and restoring the viewport target. The current
-runtime does not interpret these values yet. WritingScreen now has a read-only
+runtime interprets these values only for the top-bar zoom reset action.
+WritingScreen turns that button tap into `EditorEvent.resetZoomRequested`; a
+normal viewport completes as an idempotent no-op, and a zoomed viewport
+dispatches the existing reset mechanism for the observed owner. Add/delete do
+not consume the operation state machine yet. WritingScreen also has a read-only
 observation bridge into `EditorViewportState`: Single Page maps from the
 existing `ZoomablePage` zoom report mirrored in `PageZoomModel`, native
 Continuous `.stack` maps from the outer stack zoom report, and legacy
@@ -242,9 +246,12 @@ operation state machine instead of firing reset tokens during or after a page
 mutation.
 
 Current runtime bridge: WritingScreen can derive `currentEditorViewportState`
-from existing zoom signals, but add/delete still use their legacy direct
-handlers. No structural operation is routed through `EditorOperationStateMachine`
-yet.
+from existing zoom signals, and the top-bar reset button now routes through
+`EditorEvent.resetZoomRequested` before dispatching the existing reset token or
+PageZoom reset. Viewport-local double-tap reset paths still live inside their
+viewport implementations and remain behavior-preserving legacy paths for now.
+Add/delete still use their legacy direct handlers. No structural operation is
+routed through `EditorOperationStateMachine` yet.
 
 *Rejected:* resetting Continuous native stack zoom from Add Page while also
 mutating pages and restoring `scrollTarget`. Device testing made the page look

@@ -155,6 +155,44 @@ enum EditorOperationStateMachine {
         viewportState: EditorViewportState
     ) -> EditorOperationTransition {
         switch (event, phase) {
+        case (.resetZoomRequested(let reason), .idle):
+            switch viewportState {
+            case .normal:
+                return EditorOperationTransition(
+                    phase: .idle,
+                    viewportState: .normal,
+                    events: [.zoomResetCompleted]
+                )
+
+            case .zoomed(let owner):
+                return EditorOperationTransition(
+                    phase: .idle,
+                    viewportState: .resettingZoom(owner: owner, reason: reason),
+                    events: [.resetZoomRequested(reason: reason)]
+                )
+
+            case .resettingZoom, .restoringViewport:
+                return EditorOperationTransition(
+                    phase: phase,
+                    viewportState: viewportState,
+                    events: []
+                )
+            }
+
+        case (.zoomResetCompleted, .idle):
+            if case .resettingZoom = viewportState {
+                return EditorOperationTransition(
+                    phase: .idle,
+                    viewportState: .normal,
+                    events: []
+                )
+            }
+            return EditorOperationTransition(
+                phase: phase,
+                viewportState: viewportState,
+                events: []
+            )
+
         case (.zoomResetCompleted, .waitingForZoomReset(let operation)):
             return EditorOperationTransition(
                 phase: .applying(pendingOperation: operation),

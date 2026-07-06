@@ -356,15 +356,41 @@ struct WritingScreen: View {
     /// so it is reset via a one-way token (ZoomablePage zooms back to fit, which
     /// reports 1.0 and clears the HUD). Continuous resets PageZoomModel directly.
     private func resetZoom() {
-        switch settings.paginationStyle {
+        handleEditorEvent(.resetZoomRequested(reason: .toolbar))
+    }
+
+    private func handleEditorEvent(_ event: EditorEvent) {
+        switch event {
+        case .resetZoomRequested(let reason):
+            handleZoomResetRequested(reason: reason)
+        case .addPageRequested,
+             .deletePageRequested,
+             .zoomResetCompleted,
+             .viewportRestoreCompleted:
+            break
+        }
+    }
+
+    private func handleZoomResetRequested(reason: EditorZoomResetReason) {
+        let transition = EditorOperationStateMachine.handle(
+            .resetZoomRequested(reason: reason),
+            phase: .idle,
+            viewportState: currentEditorViewportState
+        )
+        guard transition.events.contains(.resetZoomRequested(reason: reason)),
+              case .resettingZoom(let owner, _) = transition.viewportState else {
+            return
+        }
+        dispatchZoomReset(to: owner)
+    }
+
+    private func dispatchZoomReset(to owner: EditorZoomOwner) {
+        switch owner {
         case .singlePage:
             zoomResetToken &+= 1
-        case .continuous:
-            if EditorFeatureFlags.continuousNativeZoomEnabled,
-               EditorFeatureFlags.continuousNativeZoomPrototype == .stack {
-                continuousNativeZoomResetToken &+= 1
-                return
-            }
+        case .continuousStack:
+            continuousNativeZoomResetToken &+= 1
+        case .legacyContinuousTransform:
             guard zoom.isZoomed else { return }
             withAnimation(.easeOut(duration: 0.2)) {
                 zoom.reset(flashHUD: true)
