@@ -52,8 +52,13 @@ struct SinglePagesView: View, Equatable {
     let onZoomChange: ((CGFloat) -> Void)?
     /// Finger double-tap reset request, routed back to WritingScreen's editor event bridge.
     let onZoomResetRequested: (() -> Void)?
+    /// Reports that an editor-requested reset reached fit zoom.
+    let onZoomResetCompleted: (() -> Void)?
     /// Bumped by the top-bar reset button to zoom the current page back to fit.
     let resetToken: Int
+
+    @State private var editablePageID: UUID?
+    @State private var editReadinessGeneration = 0
 
     // MARK: - Equatable
     //
@@ -94,6 +99,8 @@ struct SinglePagesView: View, Equatable {
 
                 ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
                     let delta = CGFloat(index - currentPageIndex)
+                    let isCurrentPage = index == currentPageIndex
+                    let isEditablePage = isCurrentPage && page.id == editablePageID
 
                     // Each page is a UIScrollView-backed zoomable page: it fits
                     // the page to the viewport and owns its own pinch / pan /
@@ -109,11 +116,15 @@ struct SinglePagesView: View, Equatable {
                         onSwipeBackward: handleSwipeBackward,
                         onZoomChange: onZoomChange,
                         onZoomResetRequested: onZoomResetRequested,
+                        onZoomResetCompleted: onZoomResetCompleted,
+                        isCurrentPage: isEditablePage,
                         resetToken: resetToken
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .offset(x: vertical ? 0 : delta * stride,
                             y: vertical ? delta * stride : 0)
+                    .allowsHitTesting(isEditablePage)
+                    .zIndex(isCurrentPage ? 1 : 0)
                 }
             }
             // Center the carousel in the viewport.
@@ -124,14 +135,40 @@ struct SinglePagesView: View, Equatable {
         // every page turn. That page's canvas is then promoted — it flushes
         // the outgoing page, reloads the latest drawing, takes first
         // responder and binds the ToolPicker, in that order.
-        .onAppear { syncDesiredActive() }
-        .onChange(of: currentPageIndex) { _, _ in syncDesiredActive() }
+        .onAppear {
+            syncDesiredActive()
+            armCurrentPageForEditing(delay: 0)
+        }
+        .onChange(of: currentPageIndex) { _, _ in
+            editablePageID = nil
+            syncDesiredActive()
+            armCurrentPageForEditing(delay: 0.30)
+        }
+        .onChange(of: pages.compactMap(\.id)) { _, _ in
+            editablePageID = nil
+            syncDesiredActive()
+            armCurrentPageForEditing(delay: 0.30)
+        }
     }
 
     private func syncDesiredActive() {
         guard !pages.isEmpty, currentPageIndex < pages.count,
               let id = pages[currentPageIndex].id else { return }
         DrawingSessionManager.shared.setDesiredActive(pageID: id, role: .single)
+    }
+
+    private func armCurrentPageForEditing(delay: TimeInterval) {
+        guard !pages.isEmpty, currentPageIndex < pages.count,
+              let id = pages[currentPageIndex].id else { return }
+        editReadinessGeneration &+= 1
+        let generation = editReadinessGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard generation == editReadinessGeneration,
+                  currentPageIndex < pages.count,
+                  pages[currentPageIndex].id == id else { return }
+            editablePageID = id
+            DrawingSessionManager.shared.setDesiredActive(pageID: id, role: .single)
+        }
     }
 
     // MARK: - Navigation

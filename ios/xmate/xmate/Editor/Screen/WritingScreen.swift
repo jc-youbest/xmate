@@ -88,6 +88,8 @@ struct WritingScreen: View {
     @State private var pages: [Page] = []
     @State private var currentPageIndex: Int = 0
     @State private var mutationPhase: EditorMutationPhase = .idle
+    @State private var editorOperationPhase: EditorOperationPhase = .idle
+    @State private var editorOperationViewportState: EditorViewportState = .normal
 
     /// One-way scroll signal for Continuous mode Add Page.
     /// WritingScreen sets this to the new page's UUID; ContinuousPagesView
@@ -190,6 +192,9 @@ struct WritingScreen: View {
                                 onZoomChange: { zoom.setDisplayZoom($0) },
                                 onZoomResetRequested: {
                                     handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+                                },
+                                onZoomResetCompleted: {
+                                    scheduleZoomResetCompleted()
                                 },
                                 resetToken: zoomResetToken)
                     .equatable()
@@ -294,6 +299,9 @@ struct WritingScreen: View {
             onZoomChange: prototype == .stack ? handleNativeStackZoom : nil,
             onZoomResetRequested: {
                 handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+            },
+            onZoomResetCompleted: {
+                scheduleZoomResetCompleted()
             }
         )
     }
@@ -374,9 +382,10 @@ struct WritingScreen: View {
             handleZoomResetRequested(reason: reason)
         case .addPageRequested,
              .deletePageRequested,
-             .zoomResetCompleted,
              .viewportRestoreCompleted:
             break
+        case .zoomResetCompleted:
+            handleZoomResetCompleted()
         }
     }
 
@@ -390,10 +399,14 @@ struct WritingScreen: View {
               case .resettingZoom(let owner, _) = transition.viewportState else {
             return
         }
-        dispatchZoomReset(to: owner)
+        dispatchZoomReset(to: owner, reason: reason)
     }
 
-    private func dispatchZoomReset(to owner: EditorZoomOwner) {
+    private func dispatchZoomReset(
+        to owner: EditorZoomOwner,
+        reason: EditorZoomResetReason
+    ) {
+        logEditorOperation("reset requested owner=\(owner) reason=\(reason) phase=\(editorOperationPhase)")
         switch owner {
         case .singlePage:
             zoomResetToken &+= 1
@@ -404,6 +417,41 @@ struct WritingScreen: View {
             withAnimation(.easeOut(duration: 0.2)) {
                 zoom.reset(flashHUD: true)
             }
+            scheduleZoomResetCompleted()
+        }
+    }
+
+    private func scheduleZoomResetCompleted() {
+        Task { @MainActor in
+            await Task.yield()
+            handleEditorEvent(.zoomResetCompleted)
+        }
+    }
+
+    private func handleZoomResetCompleted() {
+        logEditorOperation("reset completed owner=\(resettingZoomOwnerDescription) phase=\(editorOperationPhase) viewport=\(editorOperationViewportState)")
+        let transition = EditorOperationStateMachine.handle(
+            .zoomResetCompleted,
+            phase: editorOperationPhase,
+            viewportState: editorOperationViewportState
+        )
+        editorOperationPhase = transition.phase
+        editorOperationViewportState = transition.viewportState
+
+        guard case .applying(let operation) = transition.phase else { return }
+        switch operation {
+        case .addPage:
+            logEditorOperation("pending Add Page consumed")
+            performAddPageNow()
+        case .deletePage,
+             .duplicatePage,
+             .reorderPage,
+             .changePageSize,
+             .changePageOrientation,
+             .changePageBackground,
+             .insertObject:
+            editorOperationPhase = .idle
+            editorOperationViewportState = .normal
         }
     }
 
@@ -417,6 +465,56 @@ struct WritingScreen: View {
     // MARK: - Page CRUD (F-051)
 
     private func handleAddPage() {
+        handleAddPageRequested()
+    }
+
+    private func handleAddPageRequested() {
+        logEditorOperation("Add Page requested viewport=\(currentEditorViewportState) phase=\(editorOperationPhase)")
+        guard editorOperationPhase == .idle else {
+            logEditorOperation("Add Page ignored while operation is pending phase=\(editorOperationPhase)")
+            return
+        }
+        let transition = EditorOperationStateMachine.request(
+            .addPage,
+            viewportState: currentEditorViewportState
+        )
+        editorOperationPhase = transition.phase
+        editorOperationViewportState = transition.viewportState
+
+        switch transition.phase {
+        case .applying(.addPage):
+            logEditorOperation("Add Page applying immediately")
+            performAddPageNow()
+
+        case .waitingForZoomReset(.addPage):
+            logEditorOperation("pending Add Page stored")
+            guard case .resettingZoom(let owner, _) = transition.viewportState,
+                  transition.events.contains(.resetZoomRequested(reason: .beforeAddPage)) else {
+                logEditorOperation("pending Add Page cancelled: missing reset request")
+                editorOperationPhase = .idle
+                editorOperationViewportState = .normal
+                return
+            }
+            dispatchZoomReset(to: owner, reason: .beforeAddPage)
+
+        case .idle,
+             .applying,
+             .waitingForZoomReset,
+             .restoringViewport:
+            logEditorOperation("Add Page cancelled by unexpected transition=\(transition.phase)")
+            editorOperationPhase = .idle
+            editorOperationViewportState = .normal
+        }
+    }
+
+    private func performAddPageNow() {
+        logEditorOperation("performAddPageNow entered")
+        defer {
+            editorOperationPhase = .idle
+            editorOperationViewportState = .normal
+            logEditorOperation("operation returned to idle")
+        }
+
         let existingPageIDs = pages.compactMap(\.id)
         let holdsPhaseForContinuousRestore = settings.paginationStyle == .continuous
         mutationPhase = .applyingPageMutation
@@ -459,6 +557,19 @@ struct WritingScreen: View {
         // No .activatingDrawing phase yet: add-page drawing activation still
         // happens indirectly through the existing viewport/DrawingSessionManager
         // callbacks after currentPageIndex / scrollTarget change.
+    }
+
+    private func logEditorOperation(_ message: String) {
+        #if DEBUG
+        print("[EDITOR-OP] \(message)")
+        #endif
+    }
+
+    private var resettingZoomOwnerDescription: String {
+        if case .resettingZoom(let owner, _) = editorOperationViewportState {
+            return "\(owner)"
+        }
+        return "none"
     }
 
     private func plannedAddPageTargetIndex(

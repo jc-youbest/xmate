@@ -98,18 +98,26 @@ state-machine vocabulary for the same migration. They record the editor rule
 that structural operations require a normal viewport. If an operation is
 requested while zoomed, the future transaction waits for a zoom-reset event
 before applying the operation and restoring the viewport target. The current
-runtime interprets these values only for user-initiated zoom reset actions.
-WritingScreen turns the top-bar reset button and viewport-local finger
-double-tap reset requests into `EditorEvent.resetZoomRequested`; a normal
-viewport completes as an idempotent no-op, and a zoomed viewport dispatches the
-existing reset mechanism for the observed owner. Add/delete do not consume the
-operation state machine yet. WritingScreen also has a read-only observation
-bridge into `EditorViewportState`: Single Page maps from the existing
-`ZoomablePage` zoom report mirrored in `PageZoomModel`, native Continuous
-`.stack` maps from the outer stack zoom report, and legacy Continuous transform
-zoom maps from `PageZoomModel` only when that legacy path is active. The native
-Continuous `.perPage` prototype is not mapped as a structural-operation owner
-yet because it does not expose a single reliable editor-level zoom owner signal.
+runtime interprets these values for user-initiated zoom reset actions and for
+Add Page. WritingScreen turns the top-bar reset button and viewport-local
+finger double-tap reset requests into `EditorEvent.resetZoomRequested`; a
+normal viewport completes as an idempotent no-op, and a zoomed viewport
+dispatches the existing reset mechanism for the observed owner. Add Page is the
+first structural operation routed through the same state machine: if the
+viewport is normal it runs the legacy add-page body immediately; if zoomed, it
+parks a pending Add Page, requests reset with `.beforeAddPage`, waits for reset
+completion, then runs the unchanged add-page mutation/target/scroll restore
+logic. Reset completion is consumed on the next `MainActor` turn so UIKit /
+SwiftUI zoom callbacks never synchronously mutate the page array or editor
+state from inside a view update. Delete Page does not consume the operation
+state machine yet.
+WritingScreen also has a read-only observation bridge into
+`EditorViewportState`: Single Page maps from the existing `ZoomablePage` zoom
+report mirrored in `PageZoomModel`, native Continuous `.stack` maps from the
+outer stack zoom report, and legacy Continuous transform zoom maps from
+`PageZoomModel` only when that legacy path is active. The native Continuous
+`.perPage` prototype is not mapped as a structural-operation owner yet because
+it does not expose a single reliable editor-level zoom owner signal.
 
 `EditorMutationPhase` is the first narrow phase guard for those future
 transactions. Its phases are idle, planning page mutation, applying page
@@ -251,9 +259,9 @@ double-tap reset requests now route through `EditorEvent.resetZoomRequested`
 before dispatching the existing reset token or PageZoom reset. This bridge
 covers Single Page, legacy Continuous transform zoom, and native Continuous
 `.stack`; the native `.perPage` prototype remains a comparison path without a
-single editor-level zoom owner. Add/delete still use their legacy direct
-handlers. No structural operation is routed through `EditorOperationStateMachine`
-yet.
+single editor-level zoom owner. Add Page now uses the reset-before-operation
+state-machine path before invoking the existing add-page mutation body. Delete
+Page still uses its legacy direct handler.
 
 *Rejected:* resetting Continuous native stack zoom from Add Page while also
 mutating pages and restoring `scrollTarget`. Device testing made the page look
@@ -300,6 +308,30 @@ viewport scales together without per-frame SwiftUI state. A later increment
 will bound each zoom session to the page group visible when the pinch begins;
 whole-document free zoom is not the product model. Keep this as a sibling path
 behind a feature flag until device acceptance.
+
+The native stack controller owns an explicit height constraint for the hosted
+SwiftUI page stack: top/bottom padding, page count, page height, and inter-page
+gaps determine `UIScrollView.contentSize`. Do not rely only on
+`UIHostingController` intrinsic-size invalidation after page mutation; device
+testing showed Add Page could update the SwiftUI page array and top-bar count
+while the scroll view still clamped programmatic scroll to the old content
+height. Native stack zoom-display reports are also deferred to the next main
+queue turn before they update `WritingScreen` state; `UIScrollViewDelegate`
+zoom callbacks can occur during representable update/layout, and synchronously
+publishing SwiftUI state from that path produces undefined-behavior warnings.
+Single Page uses the same rule for its per-page zoom scroll views. A shared
+reset token reaches every hosted page, but only the page that actually performs
+a zoom reset reports completion; fit-state pages do not claim completion for a
+structural-operation precondition they did not satisfy.
+Single Page still keeps every page canvas mounted to avoid page-turn flicker,
+but DrawingSessionManager visibility is narrower than SwiftUI lifetime: only
+the current page index is registered as visible and hit-testable. Off-screen
+pages remain warm but cannot become the ToolPicker anchor or receive Pencil
+input during add-page restore/page-turn churn. After a Single Page index/page
+list change, Pencil hit testing is held closed for one short activation window;
+then the current page is re-registered visible and re-declared desired active.
+This prevents a very fast first stroke after zoomed Add Page from landing
+before the new page's PencilKit/ToolPicker handoff has stabilized.
 
 *Rejected as the final Continuous design:* persistent inner zoom scroll views
 per page. Device testing proved that path smooth, but when the viewport showed

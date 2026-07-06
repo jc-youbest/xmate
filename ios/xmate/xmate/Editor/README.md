@@ -98,6 +98,15 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   top-bar reset and viewport-local double-tap reset to `resetZoomRequested`
   and then dispatches the existing owner-specific reset mechanism. This covers
   Single Page, legacy Continuous transform zoom, and native Continuous stack.
+- Add Page is the first structural operation routed through
+  `EditorOperationStateMachine`: normal viewports run the existing add-page
+  logic immediately; zoomed viewports reset first, wait for reset completion,
+  then run the existing add-page mutation/target/scroll restore on the next
+  `MainActor` turn. Delete Page remains on the legacy direct path.
+- Single Page keeps all page canvases mounted for flicker-free turns, but only
+  the current page is registered as visible/hit-testable for PencilKit editing.
+  After index/page-list changes, editing opens after a short activation window
+  so the new page cannot receive Pencil input before ToolPicker handoff settles.
 - EditorMutationPhase is partially live: WritingScreen keeps it active during
   Continuous add/delete restore and Continuous views use it only to ignore
   mutation-time current-page tracking callbacks. Do not use it to gate zoom

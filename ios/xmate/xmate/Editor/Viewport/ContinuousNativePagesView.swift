@@ -34,6 +34,7 @@ struct ContinuousNativePagesView: View {
     let resetToken: Int
     let onZoomChange: ((CGFloat) -> Void)?
     let onZoomResetRequested: (() -> Void)?
+    let onZoomResetCompleted: (() -> Void)?
 
     private let gapPt: CGFloat = 20
     @StateObject private var diagnostics = ContinuousNativeSessionDiagnostics()
@@ -56,6 +57,7 @@ struct ContinuousNativePagesView: View {
                 resetToken: resetToken,
                 onZoomChange: onZoomChange,
                 onZoomResetRequested: onZoomResetRequested,
+                onZoomResetCompleted: onZoomResetCompleted,
                 diagnostics: diagnostics,
                 onCurrentPageChange: { report in
                     let displayedChanged = report.index != currentPageIndex
@@ -120,6 +122,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     let resetToken: Int
     let onZoomChange: ((CGFloat) -> Void)?
     let onZoomResetRequested: (() -> Void)?
+    let onZoomResetCompleted: (() -> Void)?
     let diagnostics: ContinuousNativeSessionDiagnostics
     let onCurrentPageChange: (ContinuousNativePageReport) -> Void
     let onScrollTargetConsumed: () -> Void
@@ -131,7 +134,8 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
             diagnostics: diagnostics,
             zoomPrototype: zoomPrototype,
             onZoomChange: onZoomChange,
-            onZoomResetRequested: onZoomResetRequested
+            onZoomResetRequested: onZoomResetRequested,
+            onZoomResetCompleted: onZoomResetCompleted
         )
         controller.configure(
             pageIDs: pages.compactMap(\.id),
@@ -148,6 +152,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
                                 context: Context) {
         controller.updateContent(makeContent())
         controller.updateZoomResetHandler(onZoomResetRequested)
+        controller.updateZoomResetCompletionHandler(onZoomResetCompleted)
         controller.configure(
             pageIDs: pages.compactMap(\.id),
             pageHeight: paper.height * fitScale,
@@ -767,6 +772,7 @@ private final class ContinuousNativeScrollController: UIViewController,
                                                       UIGestureRecognizerDelegate {
     private let scrollView = UIScrollView()
     private let host: UIHostingController<ContinuousNativePageStack>
+    private var hostHeightConstraint: NSLayoutConstraint?
 
     private var pageIDs: [UUID] = []
     private var pageHeight: CGFloat = 0
@@ -777,6 +783,7 @@ private final class ContinuousNativeScrollController: UIViewController,
     private var onCurrentPageChange: ((ContinuousNativePageReport) -> Void)?
     private var onZoomChange: ((CGFloat) -> Void)?
     private var onZoomResetRequested: (() -> Void)?
+    private var onZoomResetCompleted: (() -> Void)?
 
     private var didRestoreInitialPosition = false
     private var lastReportedIndex: Int?
@@ -811,12 +818,14 @@ private final class ContinuousNativeScrollController: UIViewController,
          diagnostics: ContinuousNativeSessionDiagnostics,
          zoomPrototype: ContinuousNativeZoomPrototype,
          onZoomChange: ((CGFloat) -> Void)?,
-         onZoomResetRequested: (() -> Void)?) {
+         onZoomResetRequested: (() -> Void)?,
+         onZoomResetCompleted: (() -> Void)?) {
         host = UIHostingController(rootView: content)
         self.diagnostics = diagnostics
         self.zoomPrototype = zoomPrototype
         self.onZoomChange = onZoomChange
         self.onZoomResetRequested = onZoomResetRequested
+        self.onZoomResetCompleted = onZoomResetCompleted
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -892,6 +901,9 @@ private final class ContinuousNativeScrollController: UIViewController,
         scrollView.addSubview(host.view)
         host.didMove(toParent: self)
 
+        let hostHeightConstraint = host.view.heightAnchor.constraint(equalToConstant: 0)
+        self.hostHeightConstraint = hostHeightConstraint
+
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -902,7 +914,8 @@ private final class ContinuousNativeScrollController: UIViewController,
             host.view.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
             host.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             host.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            host.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+            host.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+            hostHeightConstraint
         ])
 
         #if DEBUG
@@ -1060,6 +1073,7 @@ private final class ContinuousNativeScrollController: UIViewController,
         #endif
         refreshStackSelectionRecognizersIfNeeded(zoomed: false, force: true)
         releaseStackZoomTrackingAndReport()
+        onZoomResetCompleted?()
     }
 
     private func releaseStackZoomTrackingAndReport() {
@@ -1085,7 +1099,12 @@ private final class ContinuousNativeScrollController: UIViewController,
         let minScale = max(scrollView.minimumZoomScale, 0.0001)
         let multiple = (scale / minScale)
             .clamped(to: PageZoomModel.minZoom...PageZoomModel.maxZoom)
-        onZoomChange?(multiple)
+        // UIScrollView can report zoom changes while SwiftUI is updating this
+        // representable. Defer the binding writes owned by WritingScreen so
+        // reset-before-operation never publishes state inside that callback.
+        DispatchQueue.main.async { [weak self] in
+            self?.onZoomChange?(multiple)
+        }
     }
 
     private func handleResetTokenIfNeeded() {
@@ -1094,6 +1113,7 @@ private final class ContinuousNativeScrollController: UIViewController,
         lastHandledResetToken = resetToken
         guard scrollView.zoomScale > scrollView.minimumZoomScale + 0.0001 else {
             reportStackZoomDisplay(scrollView.minimumZoomScale)
+            onZoomResetCompleted?()
             return
         }
         stackResetInProgress = true
@@ -1155,11 +1175,16 @@ private final class ContinuousNativeScrollController: UIViewController,
         self.restorePageIndex = restorePageIndex
         self.resetToken = resetToken
         self.onCurrentPageChange = onCurrentPageChange
+        updateHostContentHeight()
         handleResetTokenIfNeeded()
     }
 
     func updateZoomResetHandler(_ handler: (() -> Void)?) {
         onZoomResetRequested = handler
+    }
+
+    func updateZoomResetCompletionHandler(_ handler: (() -> Void)?) {
+        onZoomResetCompleted = handler
     }
 
     func handleScrollTarget(_ target: UUID?, consumed: @escaping () -> Void) {
@@ -1172,6 +1197,7 @@ private final class ContinuousNativeScrollController: UIViewController,
         handledScrollTarget = target
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.updateHostContentHeight()
             self.view.layoutIfNeeded()
             self.scrollToPage(index: index, animated: true)
             consumed()
@@ -1336,6 +1362,7 @@ private final class ContinuousNativeScrollController: UIViewController,
 
     private func scrollToPage(index: Int, animated: Bool) {
         guard !pageIDs.isEmpty, pageHeight > 0 else { return }
+        updateHostContentHeight()
         let safeIndex = max(0, min(pageIDs.count - 1, index))
         let pageCenter = gapPt + CGFloat(safeIndex) * (pageHeight + gapPt)
             + pageHeight / 2
@@ -1343,5 +1370,23 @@ private final class ContinuousNativeScrollController: UIViewController,
         let maximumY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
         let targetY = proposedY.clamped(to: 0...maximumY)
         scrollView.setContentOffset(CGPoint(x: 0, y: targetY), animated: animated)
+    }
+
+    private func updateHostContentHeight() {
+        guard pageHeight > 0 else { return }
+        let pageCount = pageIDs.count
+        let totalGap = gapPt * 2 + CGFloat(max(0, pageCount - 1)) * gapPt
+        let contentHeight = CGFloat(pageCount) * pageHeight + totalGap
+        guard hostHeightConstraint?.constant != contentHeight else { return }
+        hostHeightConstraint?.constant = contentHeight
+        host.view.invalidateIntrinsicContentSize()
+        host.view.setNeedsLayout()
+        scrollView.setNeedsLayout()
+        view.layoutIfNeeded()
+        #if DEBUG
+        if zoomPrototype == .stack {
+            print("[CONT-STACK-LAYOUT] pages=\(pageCount) contentHeight=\(String(format: "%.1f", contentHeight)) contentSize=\(String(format: "%.1f", scrollView.contentSize.height))")
+        }
+        #endif
     }
 }
