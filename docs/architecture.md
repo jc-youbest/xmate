@@ -98,7 +98,14 @@ state-machine vocabulary for the same migration. They record the editor rule
 that structural operations require a normal viewport. If an operation is
 requested while zoomed, the future transaction waits for a zoom-reset event
 before applying the operation and restoring the viewport target. The current
-runtime does not interpret these values yet.
+runtime does not interpret these values yet. WritingScreen now has a read-only
+observation bridge into `EditorViewportState`: Single Page maps from the
+existing `ZoomablePage` zoom report mirrored in `PageZoomModel`, native
+Continuous `.stack` maps from the outer stack zoom report, and legacy
+Continuous transform zoom maps from `PageZoomModel` only when that legacy path
+is active. The native Continuous `.perPage` prototype is not mapped as a
+structural-operation owner yet because it does not expose a single reliable
+editor-level zoom owner signal.
 
 `EditorMutationPhase` is the first narrow phase guard for those future
 transactions. Its phases are idle, planning page mutation, applying page
@@ -233,6 +240,11 @@ add/delete preconditions, future template/object insertion preconditions,
 tests, and recovery. Future implementations should route these through the
 operation state machine instead of firing reset tokens during or after a page
 mutation.
+
+Current runtime bridge: WritingScreen can derive `currentEditorViewportState`
+from existing zoom signals, but add/delete still use their legacy direct
+handlers. No structural operation is routed through `EditorOperationStateMachine`
+yet.
 
 *Rejected:* resetting Continuous native stack zoom from Add Page while also
 mutating pages and restoring `scrollTarget`. Device testing made the page look

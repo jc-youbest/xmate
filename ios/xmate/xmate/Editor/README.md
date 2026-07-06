@@ -90,6 +90,10 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   zoomed, the future transaction must request zoom reset, wait for reset
   completion or no-op completion at 100%, then mutate and restore the viewport
   target. Do not reintroduce reset-token hacks during or after mutation.
+- WritingScreen has a read-only `currentEditorViewportState` bridge for the
+  existing zoom signals: Single Page, native Continuous stack, and legacy
+  Continuous transform. Native Continuous per-page prototype is not a reliable
+  operation-level owner yet. Add/delete do not consume this bridge yet.
 - EditorMutationPhase is partially live: WritingScreen keeps it active during
   Continuous add/delete restore and Continuous views use it only to ignore
   mutation-time current-page tracking callbacks. Do not use it to gate zoom

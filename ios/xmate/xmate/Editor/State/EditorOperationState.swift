@@ -16,6 +16,32 @@ enum EditorViewportState: Hashable {
     var isNormal: Bool {
         self == .normal
     }
+
+    static func observed(
+        paginationStyle: PaginationStyle,
+        isSinglePageZoomed: Bool,
+        isContinuousNativeStackActive: Bool,
+        isContinuousNativeStackZoomed: Bool,
+        isLegacyContinuousTransformZoomed: Bool
+    ) -> EditorViewportState {
+        switch paginationStyle {
+        case .singlePage:
+            return isSinglePageZoomed
+                ? .zoomed(owner: .singlePage)
+                : .normal
+
+        case .continuous:
+            if isContinuousNativeStackActive {
+                return isContinuousNativeStackZoomed
+                    ? .zoomed(owner: .continuousStack)
+                    : .normal
+            }
+            if isLegacyContinuousTransformZoomed {
+                return .zoomed(owner: .legacyContinuousTransform)
+            }
+            return .normal
+        }
+    }
 }
 
 enum EditorZoomOwner: Hashable {

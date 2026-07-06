@@ -306,6 +306,22 @@ struct WritingScreen: View {
         isContinuousStackPrototype && continuousStackTopBarZoomVisible
     }
 
+    private var isLegacyContinuousTransformZoomed: Bool {
+        settings.paginationStyle == .continuous
+            && !EditorFeatureFlags.continuousNativeZoomEnabled
+            && zoom.isZoomed
+    }
+
+    private var currentEditorViewportState: EditorViewportState {
+        EditorViewportState.observed(
+            paginationStyle: settings.paginationStyle,
+            isSinglePageZoomed: zoom.isZoomed,
+            isContinuousNativeStackActive: isContinuousStackPrototype,
+            isContinuousNativeStackZoomed: isContinuousStackNativeZoomed,
+            isLegacyContinuousTransformZoomed: isLegacyContinuousTransformZoomed
+        )
+    }
+
     private func handleNativeStackZoom(_ multiple: CGFloat) {
         zoom.setDisplayZoom(multiple)
         let visible = multiple > 1.0001

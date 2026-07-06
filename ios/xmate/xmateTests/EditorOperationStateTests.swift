@@ -53,4 +53,52 @@ struct EditorOperationStateTests {
         #expect(transition.phase == .applying(pendingOperation: .deletePage))
         #expect(!transition.events.contains(.resetZoomRequested(reason: .beforeDeletePage)))
     }
+
+    @Test func observedViewportMapsSinglePageZoomOwner() {
+        let state = EditorViewportState.observed(
+            paginationStyle: .singlePage,
+            isSinglePageZoomed: true,
+            isContinuousNativeStackActive: false,
+            isContinuousNativeStackZoomed: false,
+            isLegacyContinuousTransformZoomed: false
+        )
+
+        #expect(state == .zoomed(owner: .singlePage))
+    }
+
+    @Test func observedViewportMapsContinuousNativeStackOwner() {
+        let state = EditorViewportState.observed(
+            paginationStyle: .continuous,
+            isSinglePageZoomed: false,
+            isContinuousNativeStackActive: true,
+            isContinuousNativeStackZoomed: true,
+            isLegacyContinuousTransformZoomed: false
+        )
+
+        #expect(state == .zoomed(owner: .continuousStack))
+    }
+
+    @Test func observedViewportMapsLegacyContinuousTransformOwner() {
+        let state = EditorViewportState.observed(
+            paginationStyle: .continuous,
+            isSinglePageZoomed: false,
+            isContinuousNativeStackActive: false,
+            isContinuousNativeStackZoomed: false,
+            isLegacyContinuousTransformZoomed: true
+        )
+
+        #expect(state == .zoomed(owner: .legacyContinuousTransform))
+    }
+
+    @Test func observedViewportIsNormalWhenActiveOwnerIsNotZoomed() {
+        let state = EditorViewportState.observed(
+            paginationStyle: .continuous,
+            isSinglePageZoomed: true,
+            isContinuousNativeStackActive: true,
+            isContinuousNativeStackZoomed: false,
+            isLegacyContinuousTransformZoomed: true
+        )
+
+        #expect(state == .normal)
+    }
 }
