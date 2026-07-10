@@ -7,5 +7,12 @@ enum PageOrientation: Hashable {
     case portrait
     case landscape
     case square
-}
 
+    var debugName: String {
+        switch self {
+        case .portrait: return "portrait"
+        case .landscape: return "landscape"
+        case .square: return "square"
+        }
+    }
+}

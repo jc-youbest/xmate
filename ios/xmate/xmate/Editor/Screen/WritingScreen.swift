@@ -76,10 +76,20 @@ struct WritingScreen: View {
     /// viewport code still consumes PaperSize through PageGeometry's bridge.
     private let editorConfiguration = EditorConfiguration.currentDefault
 
+    private var resolvedPresentationStyle: PagePresentationStyle {
+        PagePresentationStyle(settings.paginationStyle)
+    }
+
+    private var resolvedLayoutPolicy: LayoutPolicy {
+        editorConfiguration.resolvedLayoutPolicy(
+            presentationStyle: resolvedPresentationStyle
+        )
+    }
+
     private var paper: PaperSize {
         PageGeometry.paperSize(
             for: editorConfiguration.pageSpec,
-            layoutPolicy: editorConfiguration.layoutPolicy
+            layoutPolicy: resolvedLayoutPolicy
         )
     }
 
@@ -458,8 +468,24 @@ struct WritingScreen: View {
     // MARK: - Load
 
     private func loadPages() {
+        logResolvedEditorLayout()
         pages = store.pages(of: document)
         currentPageIndex = 0
+    }
+
+    private func logResolvedEditorLayout() {
+        #if DEBUG
+        let spec = editorConfiguration.pageSpec
+        let policy = resolvedLayoutPolicy
+        let presetName = PagePresetCatalog.name(for: spec) ?? "custom"
+        print(
+            "[EDITOR-LAYOUT] preset=\(presetName) "
+                + "page=\(Int(spec.size.width))x\(Int(spec.size.height)) "
+                + "flowAxis=\(policy.pageFlowAxis.debugName) "
+                + "presentation=\(policy.presentationStyle.debugName) "
+                + "orientation=\(spec.size.orientation.debugName)"
+        )
+        #endif
     }
 
     // MARK: - Page CRUD (F-051)

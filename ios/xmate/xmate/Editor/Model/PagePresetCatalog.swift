@@ -7,6 +7,12 @@
 // landscape/postcard support is intentionally wired.
 
 enum PagePresetCatalog {
+    struct Preset: Hashable {
+        let id: String
+        let name: String
+        let spec: PageSpec
+    }
+
     static let a4Portrait = PageSpec(
         size: .a4Portrait,
         flowAxis: .vertical
@@ -18,17 +24,28 @@ enum PagePresetCatalog {
     static let currentDocumentPageSpec = a4Portrait
 
     static let a4Landscape = PageSpec(
-        size: PageSize(width: 842, height: 595),
+        size: .a4Landscape,
         flowAxis: .horizontal
     )
 
     static let postcardPortrait = PageSpec(
-        size: PageSize(width: 576, height: 864),
+        size: .postcardPortrait,
         flowAxis: .vertical
     )
 
     static let postcardLandscape = PageSpec(
-        size: PageSize(width: 864, height: 576),
+        size: .postcardLandscape,
         flowAxis: .horizontal
     )
+
+    static let presets: [Preset] = [
+        Preset(id: "a4-portrait", name: "A4 Portrait", spec: a4Portrait),
+        Preset(id: "a4-landscape", name: "A4 Landscape", spec: a4Landscape),
+        Preset(id: "postcard-portrait", name: "Postcard Portrait", spec: postcardPortrait),
+        Preset(id: "postcard-landscape", name: "Postcard Landscape", spec: postcardLandscape),
+    ]
+
+    static func name(for spec: PageSpec) -> String? {
+        presets.first(where: { $0.spec == spec })?.name
+    }
 }

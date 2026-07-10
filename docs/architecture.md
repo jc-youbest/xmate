@@ -74,8 +74,17 @@ uniformly to fit, and handwriting never reflows.
 Current stage limitation: the document page spec is still fixed to A4
 portrait, but the data now flows through `PageSpec` / `PageSize` /
 `LayoutPolicy` and is adapted by `PageGeometry` back into the existing
-`PaperSize` runtime path. Per-document paper still waits for the Core
-Data migration.
+`PaperSize` runtime path. `PagePresetCatalog` carries A4 portrait, A4
+landscape, postcard portrait, and postcard landscape as data entries;
+only A4 portrait is selected by the current default configuration.
+Per-document paper still waits for the Core Data migration.
+
+Layout resolution is explicit and small: `EditorConfiguration` resolves
+the active `LayoutPolicy` from the selected `PageSpec` and current
+presentation style. That makes the effective flow axis come from
+`PageSpec.flowAxis` while preserving the existing runtime bridge. The
+current default resolves to A4 portrait, vertical flow, and whichever
+Single Page / Continuous presentation the existing settings choose.
 
 `EditorLayoutEngine` is the future pure layout source. It takes
 `PageSpec`, `LayoutPolicy`, viewport size, page count, and presentation

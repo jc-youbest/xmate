@@ -20,8 +20,9 @@
   EditorLayoutEngine is the future pure layout source; PageGeometry remains
   the compatibility bridge used by current runtime views.
 - Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
-  LayoutPolicy now provide the current A4 portrait data, bridged back through
-  PageGeometry so runtime behavior stays unchanged.
+  LayoutPolicy now provide the current A4 portrait default plus data-only A4
+  landscape and postcard presets, bridged back through PageGeometry so runtime
+  behavior stays unchanged.
 - State/: inert EditorCommand / ViewportCommand / DrawingCommand values, plus
   EditorMutationPhase, for transaction-style viewport, zoom, mutation, and
   activation flows. The phase currently guards only Continuous current-page

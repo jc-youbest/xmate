@@ -15,4 +15,13 @@ struct EditorConfiguration: Equatable {
     var pageMutationPolicy = PageMutationPolicy()
 
     static let currentDefault = EditorConfiguration()
+
+    func resolvedLayoutPolicy(
+        presentationStyle: PagePresentationStyle
+    ) -> LayoutPolicy {
+        layoutPolicy.resolved(
+            for: pageSpec,
+            presentationStyle: presentationStyle
+        )
+    }
 }

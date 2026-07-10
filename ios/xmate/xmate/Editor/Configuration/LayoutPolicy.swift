@@ -27,4 +27,14 @@ struct LayoutPolicy: Equatable {
 
     /// Current fit-scale behavior.
     var fitBehavior: FitBehavior = .fitWithinViewport
+
+    func resolved(
+        for pageSpec: PageSpec,
+        presentationStyle resolvedPresentationStyle: PagePresentationStyle
+    ) -> LayoutPolicy {
+        var resolved = self
+        resolved.pageFlowAxis = pageSpec.flowAxis
+        resolved.presentationStyle = resolvedPresentationStyle
+        return resolved
+    }
 }

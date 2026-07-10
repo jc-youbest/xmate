@@ -5,5 +5,11 @@
 enum PageFlowAxis: Hashable {
     case vertical
     case horizontal
-}
 
+    var debugName: String {
+        switch self {
+        case .vertical: return "vertical"
+        case .horizontal: return "horizontal"
+        }
+    }
+}
