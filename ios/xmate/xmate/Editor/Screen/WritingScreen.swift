@@ -80,16 +80,10 @@ struct WritingScreen: View {
         PagePresentationStyle(settings.paginationStyle)
     }
 
-    private var resolvedLayoutPolicy: LayoutPolicy {
-        editorConfiguration.resolvedLayoutPolicy(
+    private var resolvedLayoutContext: EditorLayoutContext {
+        EditorLayoutContext(
+            configuration: editorConfiguration,
             presentationStyle: resolvedPresentationStyle
-        )
-    }
-
-    private var paper: PaperSize {
-        PageGeometry.paperSize(
-            for: editorConfiguration.pageSpec,
-            layoutPolicy: resolvedLayoutPolicy
         )
     }
 
@@ -121,6 +115,8 @@ struct WritingScreen: View {
     // MARK: - Body
 
     var body: some View {
+        let layoutContext = resolvedLayoutContext
+
         VStack(spacing: 0) {
 
             // Build the top bar AND the pagination view only once pages are
@@ -137,6 +133,7 @@ struct WritingScreen: View {
                 WritingTopBar(
                     currentIndex: currentPageIndex,
                     pageCount: pages.count,
+                    layoutContext: layoutContext,
                     paginationStyle: $settings.paginationStyle,
                     zoomPercent: topBarZoomPercent,
                     onResetZoom: resetZoom,
@@ -153,7 +150,7 @@ struct WritingScreen: View {
                 // Canvas area extracted into a helper to keep body small enough
                 // for the Swift type checker (the GeometryReader + gesture tree
                 // would otherwise exceed the compiler's expression-complexity limit).
-                canvasArea
+                canvasArea(layoutContext: layoutContext)
             } else {
                 // Pages not resolved yet — show the letterbox background, never
                 // an empty-page pagination view (see comment above).
@@ -185,7 +182,7 @@ struct WritingScreen: View {
     // Extracted from body to stay within Swift's expression-complexity limit.
 
     @ViewBuilder
-    private var canvasArea: some View {
+    private func canvasArea(layoutContext: EditorLayoutContext) -> some View {
         GeometryReader { _ in
             switch settings.paginationStyle {
             case .singlePage:
@@ -196,7 +193,7 @@ struct WritingScreen: View {
                 // clips the zoomed page to its slot, so nothing paints over the
                 // top bar either.
                 SinglePagesView(pages: pages,
-                                paper: paper,
+                                layoutContext: layoutContext,
                                 store: store,
                                 currentPageIndex: $currentPageIndex,
                                 onZoomChange: { zoom.setDisplayZoom($0) },
@@ -212,18 +209,18 @@ struct WritingScreen: View {
                 if EditorFeatureFlags.continuousNativeZoomEnabled {
                     switch EditorFeatureFlags.continuousNativeZoomPrototype {
                     case .perPage:
-                        continuousNativeArea(.perPage)
+                        continuousNativeArea(.perPage, layoutContext: layoutContext)
                             .onAppear {
                                 logContinuousPath("native prototype perPage")
                             }
                     case .stack:
-                        continuousNativeArea(.stack)
+                        continuousNativeArea(.stack, layoutContext: layoutContext)
                             .onAppear {
                                 logContinuousPath("native prototype stack")
                             }
                     }
                 } else {
-                    continuousArea
+                    continuousArea(layoutContext: layoutContext)
                         .onAppear {
                             logContinuousPath("legacy ContinuousPagesView")
                         }
@@ -261,10 +258,10 @@ struct WritingScreen: View {
     /// still uses the SwiftUI-transform approach; the UIScrollView migration
     /// done for Single lands here in a later increment.)
     @ViewBuilder
-    private var continuousArea: some View {
+    private func continuousArea(layoutContext: EditorLayoutContext) -> some View {
         ContinuousPagesView(
             pages: pages,
-            paper: paper,
+            layoutContext: layoutContext,
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
@@ -293,11 +290,12 @@ struct WritingScreen: View {
     /// owner while remaining locked at 1x in this increment.
     @ViewBuilder
     private func continuousNativeArea(
-        _ prototype: ContinuousNativeZoomPrototype
+        _ prototype: ContinuousNativeZoomPrototype,
+        layoutContext: EditorLayoutContext
     ) -> some View {
         ContinuousNativePagesView(
             pages: pages,
-            paper: paper,
+            layoutContext: layoutContext,
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
@@ -475,16 +473,7 @@ struct WritingScreen: View {
 
     private func logResolvedEditorLayout() {
         #if DEBUG
-        let spec = editorConfiguration.pageSpec
-        let policy = resolvedLayoutPolicy
-        let presetName = PagePresetCatalog.name(for: spec) ?? "custom"
-        print(
-            "[EDITOR-LAYOUT] preset=\(presetName) "
-                + "page=\(Int(spec.size.width))x\(Int(spec.size.height)) "
-                + "flowAxis=\(policy.pageFlowAxis.debugName) "
-                + "presentation=\(policy.presentationStyle.debugName) "
-                + "orientation=\(spec.size.orientation.debugName)"
-        )
+        print("[EDITOR-LAYOUT] \(resolvedLayoutContext.debugDescription)")
         #endif
     }
 

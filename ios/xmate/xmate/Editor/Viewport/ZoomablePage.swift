@@ -30,15 +30,15 @@ import UIKit
 /// known and keeps the page centred (letterboxed) when smaller than the viewport.
 final class PageScrollView: UIScrollView {
     weak var pageCanvas: XmateCanvasView?
-    var paper: PaperSize?
+    var layoutContext: EditorLayoutContext?
     private var configuredViewport: CGSize = .zero
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard let paper, bounds.size.width > 0, bounds.size.height > 0 else { return }
+        guard let layoutContext, bounds.size.width > 0, bounds.size.height > 0 else { return }
         if bounds.size != configuredViewport {
             configuredViewport = bounds.size
-            let fit = PageGeometry.fitScale(in: bounds.size, for: paper)
+            let fit = layoutContext.fitScale(in: bounds.size)
             let wasAtFit = (minimumZoomScale == 0) || zoomScale <= minimumZoomScale + 0.0001
             minimumZoomScale = fit
             maximumZoomScale = fit * PageZoomModel.maxZoom
@@ -66,7 +66,7 @@ final class PageScrollView: UIScrollView {
 struct ZoomablePage: UIViewRepresentable {
     let page: Page
     let store: NoteStore
-    let paper: PaperSize
+    let layoutContext: EditorLayoutContext
 
     /// Page-turn swipes — only fire at fit (suspended while zoomed in).
     var swipeAxis: Axis = .vertical
@@ -285,7 +285,7 @@ struct ZoomablePage: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PageScrollView {
         let scrollView = PageScrollView()
-        scrollView.paper = paper
+        scrollView.layoutContext = layoutContext
         scrollView.delegate = context.coordinator
         scrollView.bouncesZoom = true
         scrollView.alwaysBounceVertical = false
@@ -311,6 +311,7 @@ struct ZoomablePage: UIViewRepresentable {
         canvas.delegate = context.coordinator
         canvas.pageID = page.id
         canvas.role = .single
+        let paper = layoutContext.paper
         canvas.frame = CGRect(x: 0, y: 0, width: paper.width, height: paper.height)
         if let data = page.drawingData, let drawing = StrokeSerializer.decode(data) {
             canvas.drawing = drawing
@@ -391,6 +392,7 @@ struct ZoomablePage: UIViewRepresentable {
 
     func updateUIView(_ scrollView: PageScrollView, context: Context) {
         context.coordinator.parent = self
+        scrollView.layoutContext = layoutContext
         guard let canvas = context.coordinator.canvas else { return }
         // Top-bar reset: zoom back to fit when the token bumps.
         if context.coordinator.lastResetToken != resetToken {

@@ -9,13 +9,16 @@
 import SwiftUI
 
 struct PageSurface<DrawingLayer: View>: View {
+    private let layoutContext: EditorLayoutContext
     private let backgroundColor: Color
     private let drawingLayer: DrawingLayer
 
     init(
+        layoutContext: EditorLayoutContext,
         backgroundColor: Color = .white,
         @ViewBuilder drawingLayer: () -> DrawingLayer
     ) {
+        self.layoutContext = layoutContext
         self.backgroundColor = backgroundColor
         self.drawingLayer = drawingLayer()
     }
@@ -37,4 +40,3 @@ struct PageSurface<DrawingLayer: View>: View {
         }
     }
 }
-

@@ -43,7 +43,7 @@ import SwiftUI
 
 struct SinglePagesView: View, Equatable {
     let pages: [Page]
-    let paper: PaperSize
+    let layoutContext: EditorLayoutContext
     let store: NoteStore
 
     @Binding var currentPageIndex: Int
@@ -71,8 +71,7 @@ struct SinglePagesView: View, Equatable {
         lhs.pages.map(\.id) == rhs.pages.map(\.id)
             && lhs.currentPageIndex == rhs.currentPageIndex
             && lhs.resetToken == rhs.resetToken
-            && lhs.paper.width == rhs.paper.width
-            && lhs.paper.height == rhs.paper.height
+            && lhs.layoutContext == rhs.layoutContext
     }
 
     // MARK: - Constants
@@ -86,7 +85,7 @@ struct SinglePagesView: View, Equatable {
 
     var body: some View {
         GeometryReader { proxy in
-            let vertical = (paper.paginationAxis == .vertical)
+            let vertical = (layoutContext.paginationAxis == .vertical)
             // One full viewport per page: the next page sits exactly one
             // stride away along the pagination axis.
             let stride = (vertical ? proxy.size.height : proxy.size.width) + gapPt
@@ -110,8 +109,8 @@ struct SinglePagesView: View, Equatable {
                     ZoomablePage(
                         page: page,
                         store: store,
-                        paper: paper,
-                        swipeAxis: paper.paginationAxis,
+                        layoutContext: layoutContext,
+                        swipeAxis: layoutContext.paginationAxis,
                         onSwipeForward: handleSwipeForward,
                         onSwipeBackward: handleSwipeBackward,
                         onZoomChange: onZoomChange,
@@ -136,6 +135,7 @@ struct SinglePagesView: View, Equatable {
         // the outgoing page, reloads the latest drawing, takes first
         // responder and binds the ToolPicker, in that order.
         .onAppear {
+            logLayoutContext()
             syncDesiredActive()
             armCurrentPageForEditing(delay: 0)
         }
@@ -155,6 +155,12 @@ struct SinglePagesView: View, Equatable {
         guard !pages.isEmpty, currentPageIndex < pages.count,
               let id = pages[currentPageIndex].id else { return }
         DrawingSessionManager.shared.setDesiredActive(pageID: id, role: .single)
+    }
+
+    private func logLayoutContext() {
+        #if DEBUG
+        print("[EDITOR-LAYOUT] SinglePagesView \(layoutContext.debugDescription)")
+        #endif
     }
 
     private func armCurrentPageForEditing(delay: TimeInterval) {

@@ -21,7 +21,7 @@ private let continuousNativeVerboseDiagnostics = false
 
 struct ContinuousNativePagesView: View {
     let pages: [Page]
-    let paper: PaperSize
+    let layoutContext: EditorLayoutContext
     let store: NoteStore
 
     @Binding var currentPageIndex: Int
@@ -42,11 +42,11 @@ struct ContinuousNativePagesView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
+            let fitScale = layoutContext.fitScale(in: proxy.size)
 
             ContinuousNativeScrollContainer(
                 pages: pages,
-                paper: paper,
+                layoutContext: layoutContext,
                 store: store,
                 viewport: proxy.size,
                 fitScale: fitScale,
@@ -77,7 +77,10 @@ struct ContinuousNativePagesView: View {
         }
         .background(Color(.systemGroupedBackground))
         .ignoresSafeArea(edges: .bottom)
-        .onAppear { syncDesiredActive(reason: "entry") }
+        .onAppear {
+            logLayoutContext()
+            syncDesiredActive(reason: "entry")
+        }
         .onChange(of: currentPageIndex) { _, _ in
             if suppressNextActiveSync {
                 suppressNextActiveSync = false
@@ -105,13 +108,19 @@ struct ContinuousNativePagesView: View {
         DrawingSessionManager.shared
             .setDesiredActive(pageID: id, role: .continuous)
     }
+
+    private func logLayoutContext() {
+        #if DEBUG
+        print("[EDITOR-LAYOUT] ContinuousNativePagesView \(layoutContext.debugDescription)")
+        #endif
+    }
 }
 
 // MARK: - Native scroll container
 
 private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     let pages: [Page]
-    let paper: PaperSize
+    let layoutContext: EditorLayoutContext
     let store: NoteStore
     let viewport: CGSize
     let fitScale: CGFloat
@@ -129,6 +138,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> ContinuousNativeScrollController {
         let content = makeContent()
+        let paper = layoutContext.paper
         let controller = ContinuousNativeScrollController(
             content: content,
             diagnostics: diagnostics,
@@ -150,6 +160,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: ContinuousNativeScrollController,
                                 context: Context) {
+        let paper = layoutContext.paper
         controller.updateContent(makeContent())
         controller.updateZoomResetHandler(onZoomResetRequested)
         controller.updateZoomResetCompletionHandler(onZoomResetCompleted)
@@ -169,7 +180,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     private func makeContent() -> ContinuousNativePageStack {
         ContinuousNativePageStack(
             pages: pages,
-            paper: paper,
+            layoutContext: layoutContext,
             store: store,
             viewport: viewport,
             fitScale: fitScale,
@@ -184,7 +195,7 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
 
 private struct ContinuousNativePageStack: View {
     let pages: [Page]
-    let paper: PaperSize
+    let layoutContext: EditorLayoutContext
     let store: NoteStore
     let viewport: CGSize
     let fitScale: CGFloat
@@ -193,6 +204,7 @@ private struct ContinuousNativePageStack: View {
     let diagnostics: ContinuousNativeSessionDiagnostics
 
     var body: some View {
+        let paper = layoutContext.paper
         let scaledW = paper.width * fitScale
         let scaledH = paper.height * fitScale
 

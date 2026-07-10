@@ -16,6 +16,7 @@ struct WritingTopBar: View {
     /// 0-based index of the currently displayed page.
     let currentIndex: Int
     let pageCount: Int
+    let layoutContext: EditorLayoutContext
 
     /// Global pagination style — reflected and updated by PaginationStylePicker.
     @Binding var paginationStyle: PaginationStyle
@@ -109,6 +110,10 @@ struct WritingTopBar: View {
         WritingTopBar(
             currentIndex: 1,
             pageCount: 5,
+            layoutContext: EditorLayoutContext(
+                configuration: .currentDefault,
+                presentationStyle: .singlePage
+            ),
             paginationStyle: .constant(.singlePage),
             zoomPercent: 153,
             onResetZoom: {},

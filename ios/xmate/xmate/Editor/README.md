@@ -42,7 +42,8 @@
 - `Viewport/SinglePagesView.swift`, `Viewport/ContinuousPagesView.swift`,
   `Viewport/ContinuousNativePagesView.swift`, `Viewport/ZoomablePage.swift`,
   `Viewport/PageZoom.swift`
-- `Layout/PageGeometry.swift`, `Layout/EditorLayoutEngine.swift`
+- `Layout/PageGeometry.swift`, `Layout/EditorLayoutContext.swift`,
+  `Layout/EditorLayoutEngine.swift`
 - `PageSurface/PageSurface.swift`
 - `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
   `PencilKit/DrawingSessionManager.swift`

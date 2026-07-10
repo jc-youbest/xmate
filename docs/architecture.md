@@ -85,13 +85,18 @@ presentation style. That makes the effective flow axis come from
 `PageSpec.flowAxis` while preserving the existing runtime bridge. The
 current default resolves to A4 portrait, vertical flow, and whichever
 Single Page / Continuous presentation the existing settings choose.
+`EditorLayoutContext` is the value passed through WritingScreen and the
+editor view hierarchy for that resolved layout. It carries the page spec,
+page size/orientation, flow axis, presentation style, resolved policy, and
+the current bridged `PaperSize`; it is not observable state and does not
+select presets.
 
-`EditorLayoutEngine` is the future pure layout source. It takes
-`PageSpec`, `LayoutPolicy`, viewport size, page count, and presentation
-style, then returns page frames, content size, fit scale, gap, flow axis,
-and presentation style. Current runtime views still use their existing
-layout code through the `PageGeometry` compatibility bridge; the engine is
-being introduced before it becomes authoritative.
+`EditorLayoutEngine` is the future pure layout source. It can take an
+`EditorLayoutContext` plus viewport size and page count, then returns page
+frames, content size, fit scale, gap, flow axis, and presentation style.
+Current runtime views still use their existing layout code through the
+`PageGeometry` compatibility bridge; the engine is being introduced before
+it becomes authoritative.
 
 `EditorCommand` / `ViewportCommand` / `DrawingCommand` are inert command
 values that describe future editor transactions such as scroll-to-page,
