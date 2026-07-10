@@ -17,8 +17,8 @@
 //   • Double-tap (finger) resets to fit.
 //
 // Pilot scope: it owns all zoom interaction itself; PageZoomModel is NOT used
-// here. Top-bar percentage / HUD / reset-button wiring for Single is deferred
-// until the architecture is validated on device.
+// here. Zoom state is reported up to WritingScreen for the top bar, HUD, and
+// virtual editor reset events.
 
 import SwiftUI
 import PencilKit
@@ -76,8 +76,15 @@ struct ZoomablePage: UIViewRepresentable {
     /// Reports the current zoom as a 1.0…3.0 multiple of fit, for the HUD /
     /// top-bar percentage. Display only — does not drive any layout here.
     var onZoomChange: ((CGFloat) -> Void)?
-    /// Bumped by the top-bar reset button to zoom back to fit (double-tap
-    /// resets in-component, so it does not use this).
+    /// Finger double-tap reset request, routed to WritingScreen's editor event
+    /// bridge when present.
+    var onZoomResetRequested: (() -> Void)?
+    /// Reports that an editor-requested reset reached fit zoom.
+    var onZoomResetCompleted: (() -> Void)?
+    /// Single Page keeps every canvas alive, but only the current page should
+    /// be visible/interactive to the drawing session.
+    var isCurrentPage: Bool = true
+    /// Bumped by the editor reset bridge to zoom back to fit.
     var resetToken: Int = 0
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -91,6 +98,7 @@ struct ZoomablePage: UIViewRepresentable {
         weak var canvas: XmateCanvasView?
         var isRegistered = false
         var lastResetToken = 0
+        var resetCompletionPending = false
 
         /// Strong ref to our finger double-tap recogniser. PencilKit's private
         /// selection tap recognisers are made to `require(toFail:)` THIS one, so
@@ -122,13 +130,14 @@ struct ZoomablePage: UIViewRepresentable {
             scrollView.isScrollEnabled = !((scrollView as? PageScrollView)?.isAtFit ?? true)
             // Report the zoom (1.0…3.0 multiple of fit) for the HUD / top bar.
             if scrollView.minimumZoomScale > 0 {
-                parent.onZoomChange?(scrollView.zoomScale / scrollView.minimumZoomScale)
+                reportZoomChange(scrollView.zoomScale / scrollView.minimumZoomScale)
             }
             // 2D: only walk/refresh on a zoom-threshold crossing, so a pinch does
             // not re-walk the subtree every frame. refreshSelectionRecognizers
             // re-derives the zoomed state and enables/disables the selection taps.
             let zoomed = scrollView.zoomScale > scrollView.minimumZoomScale + 0.0001
             if zoomed != selectionSuppressed { refreshSelectionRecognizers() }
+            completeResetIfNeeded(scrollView)
         }
 
         func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
@@ -136,6 +145,32 @@ struct ZoomablePage: UIViewRepresentable {
             // its tap recognisers, so re-establish the link + zoom-state suppression
             // after each zoom (idempotent; sets the current desired state).
             refreshSelectionRecognizers()
+            completeResetIfNeeded(scrollView)
+        }
+
+        private func completeResetIfNeeded(_ scrollView: UIScrollView) {
+            guard resetCompletionPending,
+                  scrollView.zoomScale <= scrollView.minimumZoomScale + 0.0001 else {
+                return
+            }
+            resetCompletionPending = false
+            reportZoomResetCompleted()
+        }
+
+        private func reportZoomChange(_ multiple: CGFloat) {
+            // UIScrollView can report zoom changes while SwiftUI is updating
+            // this representable. Defer the binding writes owned by
+            // WritingScreen so reset-before-operation never publishes state
+            // inside that delegate callback.
+            DispatchQueue.main.async { [weak self] in
+                self?.parent.onZoomChange?(multiple)
+            }
+        }
+
+        private func reportZoomResetCompleted() {
+            DispatchQueue.main.async { [weak self] in
+                self?.parent.onZoomResetCompleted?()
+            }
         }
 
         // ── Saving ────────────────────────────────────────────────────────
@@ -155,6 +190,10 @@ struct ZoomablePage: UIViewRepresentable {
         @objc func handleDoubleTap(_ r: UITapGestureRecognizer) {
             guard let sv = scrollView,
                   sv.zoomScale > sv.minimumZoomScale + 0.0001 else { return }
+            if let onZoomResetRequested = parent.onZoomResetRequested {
+                onZoomResetRequested()
+                return
+            }
             sv.setZoomScale(sv.minimumZoomScale, animated: true)
         }
 
@@ -357,7 +396,10 @@ struct ZoomablePage: UIViewRepresentable {
         if context.coordinator.lastResetToken != resetToken {
             context.coordinator.lastResetToken = resetToken
             if scrollView.zoomScale > scrollView.minimumZoomScale + 0.0001 {
+                context.coordinator.resetCompletionPending = true
                 scrollView.setZoomScale(scrollView.minimumZoomScale, animated: true)
+            } else {
+                context.coordinator.resetCompletionPending = false
             }
         }
         // Register with DrawingSessionManager once the canvas is in a window
@@ -367,8 +409,19 @@ struct ZoomablePage: UIViewRepresentable {
             DispatchQueue.main.async {
                 guard canvas.window != nil, !context.coordinator.isRegistered else { return }
                 context.coordinator.isRegistered = true
-                DrawingSessionManager.shared.register(canvas, role: .single, visible: true)
+                DrawingSessionManager.shared.register(
+                    canvas,
+                    role: .single,
+                    visible: context.coordinator.parent.isCurrentPage
+                )
             }
+        }
+        if context.coordinator.isRegistered {
+            DrawingSessionManager.shared.register(
+                canvas,
+                role: .single,
+                visible: context.coordinator.parent.isCurrentPage
+            )
         }
 
         // Establish / refresh PencilKit selection-recogniser coordination (2C

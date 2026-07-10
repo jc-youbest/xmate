@@ -56,10 +56,10 @@
 // Delete document (v1 stub): resets to a single blank page. F-011 will
 // replace this with navigation to NoteListScreen in v3.
 //
-// Paper: hard-coded to PaperPreset.letter for now. Per-document paper
-// arrives with a Core Data migration in a later increment; nothing in the
-// pagination / zoom layers branches on the paper's name, so that increment
-// only swaps where `paper` comes from.
+// Paper: still fixed to the current document PageSpec (A4 portrait, vertical)
+// until the per-document Core Data migration lands. The spec is adapted through
+// PageGeometry into the existing PaperSize runtime type so the current views
+// keep their behavior exactly.
 
 import SwiftUI
 
@@ -71,14 +71,25 @@ struct WritingScreen: View {
     /// (AppRoot). See file header.
     let document: Document
 
-    /// Stage limitation: per-document paper lands with the Core Data
-    /// migration. Everything below derives behaviour from this value alone.
-    private let paper = PaperPreset.letter
+    /// Stage limitation: per-document paper lands with the Core Data migration.
+    /// The new v2 model now owns the current A4 portrait data, but existing
+    /// viewport code still consumes PaperSize through PageGeometry's bridge.
+    private let editorConfiguration = EditorConfiguration.currentDefault
+
+    private var paper: PaperSize {
+        PageGeometry.paperSize(
+            for: editorConfiguration.pageSpec,
+            layoutPolicy: editorConfiguration.layoutPolicy
+        )
+    }
 
     // MARK: - State
 
     @State private var pages: [Page] = []
     @State private var currentPageIndex: Int = 0
+    @State private var mutationPhase: EditorMutationPhase = .idle
+    @State private var editorOperationPhase: EditorOperationPhase = .idle
+    @State private var editorOperationViewportState: EditorViewportState = .normal
 
     /// One-way scroll signal for Continuous mode Add Page.
     /// WritingScreen sets this to the new page's UUID; ContinuousPagesView
@@ -179,6 +190,12 @@ struct WritingScreen: View {
                                 store: store,
                                 currentPageIndex: $currentPageIndex,
                                 onZoomChange: { zoom.setDisplayZoom($0) },
+                                onZoomResetRequested: {
+                                    handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+                                },
+                                onZoomResetCompleted: {
+                                    scheduleZoomResetCompleted()
+                                },
                                 resetToken: zoomResetToken)
                     .equatable()
             case .continuous:
@@ -241,10 +258,14 @@ struct WritingScreen: View {
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
-            onScrollTargetConsumed: { scrollTarget = nil },
+            onScrollTargetConsumed: consumeScrollTarget,
             restorePageIndex: currentPageIndex,
+            suppressesViewportTracking: mutationPhase.suppressesViewportTracking,
             isZoomed: zoom.isZoomed,
-            zoom: zoom
+            zoom: zoom,
+            onZoomResetRequested: {
+                handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+            }
         )
         .equatable()
         .scaleEffect(zoom.userZoom)
@@ -270,11 +291,18 @@ struct WritingScreen: View {
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
-            onScrollTargetConsumed: { scrollTarget = nil },
+            onScrollTargetConsumed: consumeScrollTarget,
             restorePageIndex: currentPageIndex,
+            suppressesViewportTracking: mutationPhase.suppressesViewportTracking,
             zoomPrototype: prototype,
             resetToken: continuousNativeZoomResetToken,
-            onZoomChange: prototype == .stack ? handleNativeStackZoom : nil
+            onZoomChange: prototype == .stack ? handleNativeStackZoom : nil,
+            onZoomResetRequested: {
+                handleEditorEvent(.resetZoomRequested(reason: .userGesture))
+            },
+            onZoomResetCompleted: {
+                scheduleZoomResetCompleted()
+            }
         )
     }
 
@@ -295,6 +323,22 @@ struct WritingScreen: View {
         isContinuousStackPrototype && continuousStackTopBarZoomVisible
     }
 
+    private var isLegacyContinuousTransformZoomed: Bool {
+        settings.paginationStyle == .continuous
+            && !EditorFeatureFlags.continuousNativeZoomEnabled
+            && zoom.isZoomed
+    }
+
+    private var currentEditorViewportState: EditorViewportState {
+        EditorViewportState.observed(
+            paginationStyle: settings.paginationStyle,
+            isSinglePageZoomed: zoom.isZoomed,
+            isContinuousNativeStackActive: isContinuousStackPrototype,
+            isContinuousNativeStackZoomed: isContinuousStackNativeZoomed,
+            isLegacyContinuousTransformZoomed: isLegacyContinuousTransformZoomed
+        )
+    }
+
     private func handleNativeStackZoom(_ multiple: CGFloat) {
         zoom.setDisplayZoom(multiple)
         let visible = multiple > 1.0001
@@ -313,25 +357,101 @@ struct WritingScreen: View {
         #endif
     }
 
+    private func consumeScrollTarget() {
+        scrollTarget = nil
+        finishMutationPhaseIfNeeded()
+    }
+
+    private func finishMutationPhaseIfNeeded() {
+        guard mutationPhase.suppressesViewportTracking else { return }
+        mutationPhase = .idle
+    }
+
     // MARK: - Zoom reset
 
     /// The top-bar reset button. Single Page owns its zoom in the UIScrollView,
     /// so it is reset via a one-way token (ZoomablePage zooms back to fit, which
     /// reports 1.0 and clears the HUD). Continuous resets PageZoomModel directly.
     private func resetZoom() {
-        switch settings.paginationStyle {
+        handleEditorEvent(.resetZoomRequested(reason: .toolbar))
+    }
+
+    private func handleEditorEvent(_ event: EditorEvent) {
+        switch event {
+        case .resetZoomRequested(let reason):
+            handleZoomResetRequested(reason: reason)
+        case .addPageRequested,
+             .deletePageRequested,
+             .viewportRestoreCompleted:
+            break
+        case .zoomResetCompleted:
+            handleZoomResetCompleted()
+        }
+    }
+
+    private func handleZoomResetRequested(reason: EditorZoomResetReason) {
+        let transition = EditorOperationStateMachine.handle(
+            .resetZoomRequested(reason: reason),
+            phase: .idle,
+            viewportState: currentEditorViewportState
+        )
+        guard transition.events.contains(.resetZoomRequested(reason: reason)),
+              case .resettingZoom(let owner, _) = transition.viewportState else {
+            return
+        }
+        dispatchZoomReset(to: owner, reason: reason)
+    }
+
+    private func dispatchZoomReset(
+        to owner: EditorZoomOwner,
+        reason: EditorZoomResetReason
+    ) {
+        logEditorOperation("reset requested owner=\(owner) reason=\(reason) phase=\(editorOperationPhase)")
+        switch owner {
         case .singlePage:
             zoomResetToken &+= 1
-        case .continuous:
-            if EditorFeatureFlags.continuousNativeZoomEnabled,
-               EditorFeatureFlags.continuousNativeZoomPrototype == .stack {
-                continuousNativeZoomResetToken &+= 1
-                return
-            }
+        case .continuousStack:
+            continuousNativeZoomResetToken &+= 1
+        case .legacyContinuousTransform:
             guard zoom.isZoomed else { return }
             withAnimation(.easeOut(duration: 0.2)) {
                 zoom.reset(flashHUD: true)
             }
+            scheduleZoomResetCompleted()
+        }
+    }
+
+    private func scheduleZoomResetCompleted() {
+        Task { @MainActor in
+            await Task.yield()
+            handleEditorEvent(.zoomResetCompleted)
+        }
+    }
+
+    private func handleZoomResetCompleted() {
+        logEditorOperation("reset completed owner=\(resettingZoomOwnerDescription) phase=\(editorOperationPhase) viewport=\(editorOperationViewportState)")
+        let transition = EditorOperationStateMachine.handle(
+            .zoomResetCompleted,
+            phase: editorOperationPhase,
+            viewportState: editorOperationViewportState
+        )
+        editorOperationPhase = transition.phase
+        editorOperationViewportState = transition.viewportState
+
+        guard case .applying(let operation) = transition.phase else { return }
+        switch operation {
+        case .addPage:
+            logEditorOperation("pending Add Page consumed")
+            performAddPageNow()
+        case .deletePage,
+             .duplicatePage,
+             .reorderPage,
+             .changePageSize,
+             .changePageOrientation,
+             .changePageBackground,
+             .insertObject:
+            editorOperationPhase = .idle
+            editorOperationViewportState = .normal
         }
     }
 
@@ -345,10 +465,77 @@ struct WritingScreen: View {
     // MARK: - Page CRUD (F-051)
 
     private func handleAddPage() {
+        handleAddPageRequested()
+    }
+
+    private func handleAddPageRequested() {
+        logEditorOperation("Add Page requested viewport=\(currentEditorViewportState) phase=\(editorOperationPhase)")
+        guard editorOperationPhase == .idle else {
+            logEditorOperation("Add Page ignored while operation is pending phase=\(editorOperationPhase)")
+            return
+        }
+        let transition = EditorOperationStateMachine.request(
+            .addPage,
+            viewportState: currentEditorViewportState
+        )
+        editorOperationPhase = transition.phase
+        editorOperationViewportState = transition.viewportState
+
+        switch transition.phase {
+        case .applying(.addPage):
+            logEditorOperation("Add Page applying immediately")
+            performAddPageNow()
+
+        case .waitingForZoomReset(.addPage):
+            logEditorOperation("pending Add Page stored")
+            guard case .resettingZoom(let owner, _) = transition.viewportState,
+                  transition.events.contains(.resetZoomRequested(reason: .beforeAddPage)) else {
+                logEditorOperation("pending Add Page cancelled: missing reset request")
+                editorOperationPhase = .idle
+                editorOperationViewportState = .normal
+                return
+            }
+            dispatchZoomReset(to: owner, reason: .beforeAddPage)
+
+        case .idle,
+             .applying,
+             .waitingForZoomReset,
+             .restoringViewport:
+            logEditorOperation("Add Page cancelled by unexpected transition=\(transition.phase)")
+            editorOperationPhase = .idle
+            editorOperationViewportState = .normal
+        }
+    }
+
+    private func performAddPageNow() {
+        logEditorOperation("performAddPageNow entered")
+        defer {
+            editorOperationPhase = .idle
+            editorOperationViewportState = .normal
+            logEditorOperation("operation returned to idle")
+        }
+
+        let existingPageIDs = pages.compactMap(\.id)
+        let holdsPhaseForContinuousRestore = settings.paginationStyle == .continuous
+        mutationPhase = .applyingPageMutation
+        defer {
+            if !holdsPhaseForContinuousRestore {
+                mutationPhase = .idle
+            }
+        }
+
         let newPage = store.appendPage(to: document)
         pages = store.pages(of: document)
-        let newIndex = pages.count - 1
+        let legacyNewIndex = pages.count - 1
 
+        mutationPhase = .planningPageMutation
+        let newIndex = plannedAddPageTargetIndex(
+            newPage: newPage,
+            existingPageIDs: existingPageIDs,
+            fallbackIndex: legacyNewIndex
+        )
+
+        mutationPhase = .restoringViewport
         switch settings.paginationStyle {
         case .singlePage:
             // Carousel: animating the index slides the new page in; the
@@ -362,21 +549,81 @@ struct WritingScreen: View {
             currentPageIndex = newIndex
             // One-way scroll signal — ContinuousPagesView clears it after firing.
             scrollTarget = newPage.id
+            if newPage.id == nil {
+                finishMutationPhaseIfNeeded()
+            }
         }
+
+        // No .activatingDrawing phase yet: add-page drawing activation still
+        // happens indirectly through the existing viewport/DrawingSessionManager
+        // callbacks after currentPageIndex / scrollTarget change.
+    }
+
+    private func logEditorOperation(_ message: String) {
+        #if DEBUG
+        print("[EDITOR-OP] \(message)")
+        #endif
+    }
+
+    private var resettingZoomOwnerDescription: String {
+        if case .resettingZoom(let owner, _) = editorOperationViewportState {
+            return "\(owner)"
+        }
+        return "none"
+    }
+
+    private func plannedAddPageTargetIndex(
+        newPage: Page,
+        existingPageIDs: [UUID],
+        fallbackIndex: Int
+    ) -> Int {
+        guard let newPageID = newPage.id else { return fallbackIndex }
+        let result = PageMutationCoordinator.plan(
+            request: .addPage(newPageID: newPageID),
+            pageIDs: existingPageIDs,
+            currentPageIndex: currentPageIndex
+        )
+
+        guard result.status == .planned,
+              result.targetPageID == newPageID,
+              result.targetPageIndex == fallbackIndex else {
+            // This bridge is deliberately conservative: if the planner ever
+            // disagrees with the legacy append-to-end rule, keep current
+            // runtime behavior until the full transaction migration.
+            return fallbackIndex
+        }
+        return result.targetPageIndex ?? fallbackIndex
     }
 
     private func handleDeletePage() {
         guard pages.count > 1 else { return }
         let deleteIndex = currentPageIndex
         let pageToDelete = pages[deleteIndex]
-        let newIndex = max(0, deleteIndex - 1)
+        let existingPageIDs = pages.compactMap(\.id)
+        let legacyNewIndex = max(0, deleteIndex - 1)
+        let holdsPhaseForContinuousRestore = settings.paginationStyle == .continuous
+        mutationPhase = .applyingPageMutation
+        defer {
+            if !holdsPhaseForContinuousRestore {
+                mutationPhase = .idle
+            }
+        }
 
         // dismantleUIView in PencilKitBridge flushes the departing page's
         // drawing before the PKCanvasView is torn down.
         store.deletePage(pageToDelete, from: document)
         let newPages = store.pages(of: document)
-        let safeIndex = min(newIndex, newPages.count - 1)
+        let legacySafeIndex = min(legacyNewIndex, newPages.count - 1)
 
+        mutationPhase = .planningPageMutation
+        let safeIndex = plannedDeletePageTargetIndex(
+            deletedPage: pageToDelete,
+            existingPageIDs: existingPageIDs,
+            newPages: newPages,
+            fallbackIndex: legacySafeIndex
+        )
+
+        mutationPhase = .restoringViewport
         switch settings.paginationStyle {
         case .singlePage:
             // Carousel: removing the page from the ForEach and animating the
@@ -398,7 +645,39 @@ struct WritingScreen: View {
             if safeIndex < newPages.count {
                 scrollTarget = newPages[safeIndex].id
             }
+            if scrollTarget == nil {
+                finishMutationPhaseIfNeeded()
+            }
         }
+    }
+
+    private func plannedDeletePageTargetIndex(
+        deletedPage: Page,
+        existingPageIDs: [UUID],
+        newPages: [Page],
+        fallbackIndex: Int
+    ) -> Int {
+        guard let deletedPageID = deletedPage.id,
+              fallbackIndex >= 0,
+              fallbackIndex < newPages.count,
+              let fallbackPageID = newPages[fallbackIndex].id else {
+            return fallbackIndex
+        }
+        let result = PageMutationCoordinator.plan(
+            request: .deletePage(pageID: deletedPageID),
+            pageIDs: existingPageIDs,
+            currentPageIndex: currentPageIndex
+        )
+
+        guard result.status == .planned,
+              result.targetPageID == fallbackPageID,
+              result.targetPageIndex == fallbackIndex else {
+            // This bridge only confirms the legacy delete target. If the
+            // planner disagrees, keep the current runtime rule until the full
+            // mutation transaction owns page deletion.
+            return fallbackIndex
+        }
+        return result.targetPageIndex ?? fallbackIndex
     }
 
     private func handleDeleteDocument() {
