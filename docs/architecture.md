@@ -64,12 +64,12 @@ The editor never decides which document it shows.
 ## Paper model
 
 A document is written on a paper with fixed logical dimensions in points
-(Letter 595×842 portrait; Postcard 864×576 landscape). Everything
-mechanical — orientation lock, pagination axis, swipe directions, scroll
-axis, fit scale — derives from `paper.width` / `paper.height`. **No code
-branches on a paper's name.** New presets are catalogue entries only.
-Logical page size never changes with device; every iPad scales the page
-uniformly to fit, and handwriting never reflows.
+(A4 595×842 portrait by default; other presets include A4 landscape and
+postcard portrait/landscape). Page shape, aspect ratio, fit scale, and
+default flow-axis choices derive from page-spec data, not a paper name.
+**No code branches on a paper's name.** New presets are catalogue entries
+only. Logical page size never changes with device; every iPad scales the
+page uniformly to fit, and handwriting never reflows.
 
 Current stage limitation: the document page spec is still fixed to A4
 portrait, but the data now flows through `PageSpec` / `PageSize` /
@@ -91,12 +91,99 @@ page size/orientation, flow axis, presentation style, resolved policy, and
 the current bridged `PaperSize`; it is not observable state and does not
 select presets.
 
+Current persisted model audit: Core Data has exactly one model version.
+`Document` stores `id`, `title`, `createdAt`, `updatedAt`, and an ordered
+`pages` relationship. `Page` stores `id`, `drawingData`, `version`, and
+its inverse `document` relationship. Neither entity stores page width,
+height, orientation, page-spec id, preset id, or flow axis. Therefore the
+runtime currently assumes all pages in a document use the one
+editor-resolved page spec. Existing documents implicitly mean A4 portrait
+because that is the only default the editor has ever selected.
+
+Future ownership decision: page specification belongs to the `Document`,
+not each `Page` and not `SettingsStore`. xmate documents are ordered
+stationery sheets of one paper kind; a mid-document paper change would
+make page-turning, generation, sharing, and print/export semantics
+ambiguous. `SettingsStore` may own the global presentation preference
+(`singlePage` / `continuous`) but not document paper semantics.
+`LayoutPolicy` combines the document's page spec with presentation style
+and runtime environment, and `EditorLayoutContext` is the value SwiftUI
+views consume.
+
+Future Core Data migration should add document-level page-spec fields:
+`pagePresetID: String?`, `logicalPageWidth: Double`, and
+`logicalPageHeight: Double`. If the code keeps `PageSpec.flowAxis` as
+user/document policy rather than deriving it from page dimensions, add
+`pageFlowAxisRawValue: String` as a document-level field too; otherwise
+derive flow axis from the resolved preset or dimensions when building the
+runtime `PageSpec`. Existing stores should lightweight-migrate by
+defaulting these fields to A4 portrait (`pagePresetID = "a4-portrait"`,
+`logicalPageWidth = 595`, `logicalPageHeight = 842`, vertical flow if
+stored). Do not rewrite `Page.drawingData` during that migration.
+
+PKDrawing persistence: each page's `drawingData` is
+`PKDrawing.dataRepresentation()` captured from a canvas whose bounds are
+the current logical page size. PKDrawing stores absolute drawing geometry
+in that logical coordinate space. Reopening the same document with a
+different runtime `PageSpec` does not reflow or normalize strokes: the
+stored coordinates remain absolute. A larger page can make strokes occupy
+a smaller relative area; a smaller or differently shaped page can crop
+content outside the new bounds. This is why existing documents must
+migrate to A4 portrait semantics before user-selectable presets land.
+
+Document-semantic data and runtime presentation data are separate:
+document paper width/height/preset identify the stationery being edited;
+presentation style selects Single Page or Continuous; page flow describes
+how pages are arranged in the editor; viewport size/orientation is the
+actual SwiftUI/window geometry available at runtime; preferred interface
+orientation is an optional app/window request, not page identity.
+
 `EditorLayoutEngine` is the future pure layout source. It can take an
 `EditorLayoutContext` plus viewport size and page count, then returns page
 frames, content size, fit scale, gap, flow axis, and presentation style.
 Current runtime views still use their existing layout code through the
 `PageGeometry` compatibility bridge; the engine is being introduced before
 it becomes authoritative.
+
+## Orientation and adaptive layout contract
+
+The app target currently generates its Info.plist from build settings.
+For iPad (`TARGETED_DEVICE_FAMILY = 2`), both Debug and Release declare
+`UISupportedInterfaceOrientations_iPad` as portrait and portrait-upside-
+down only. The iPhone orientation keys are irrelevant because the target
+is iPad-only. There is no AppDelegate/SceneDelegate orientation override,
+no `UIWindowScene.requestGeometryUpdate` call, no `UIDevice` orientation
+forcing, and no runtime consumer of `PaperSize.orientationLock`.
+
+Consequently, changing `PageSpec` today changes logical page dimensions,
+resolved flow axis, and rendering/fit geometry only. It does not rotate
+the app window or the editor chrome. A landscape page displayed in the
+current iPad target is a landscape sheet fitted inside a portrait editor
+viewport, which is why it appears like a landscape photo in a portrait
+frame and leaves vertical unused space.
+
+Page orientation and window orientation are different contracts. Page
+orientation is stable document content semantics. Window orientation is
+the current container supplied by iPadOS: full-screen, Split View, Stage
+Manager, resizable windows, and future external displays can all provide
+viewports whose aspect ratio does not match the document's paper. The
+editor must therefore always adapt layout to the actual viewport size.
+When full-screen and supported by the target, the app may also request a
+preferred interface orientation matching the document's page orientation,
+but that request is only a preference and cannot replace responsive
+layout.
+
+Recommended runtime contract:
+`PageSpec` describes document paper semantics; `LayoutPolicy` combines the
+page spec, presentation style, preferred flow, and environment rules;
+`EditorLayoutContext` carries the resolved value for SwiftUI; the actual
+viewport size is always authoritative for fit scale and chrome placement;
+WritingTopBar chooses a compact/regular/landscape-aware layout from the
+viewport and context, not from a preset name. Future full-screen iPad
+support can use both strategies: request landscape when a landscape
+document opens and the app is full-screen, while still adapting correctly
+when iPadOS gives the app a portrait, split, Stage Manager, or external
+display window.
 
 `EditorCommand` / `ViewportCommand` / `DrawingCommand` are inert command
 values that describe future editor transactions such as scroll-to-page,

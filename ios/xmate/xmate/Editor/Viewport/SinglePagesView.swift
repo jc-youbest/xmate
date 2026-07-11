@@ -178,9 +178,9 @@ struct SinglePagesView: View, Equatable {
 
     // MARK: - Navigation
     //
-    // Forward = next page (swipe up on portrait paper / swipe left on
-    // landscape paper); backward = previous. The carousel offsets animate;
-    // no canvas is created or destroyed.
+    // Forward = next page (swipe up for vertical flow / swipe left for
+    // horizontal flow); backward = previous. The carousel offsets animate; no
+    // canvas is created or destroyed.
 
     private func handleSwipeForward() {
         guard currentPageIndex < pages.count - 1 else { return }

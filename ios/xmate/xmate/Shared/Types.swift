@@ -10,9 +10,10 @@ import Foundation
 /// Stored as a raw String in UserDefaults so future values round-trip safely.
 enum PaginationStyle: String {
     /// One full page fills the screen at a time; finger swipe flips between
-    /// pages. Direction derived from paper.paginationAxis. Default.
+    /// pages. Direction comes from the editor's resolved layout context.
+    /// Default.
     case singlePage = "singlePage"
-    /// Pages stack and scroll continuously along paper.paginationAxis.
+    /// Pages stack and scroll continuously along the editor's resolved axis.
     /// Truly free scroll — no snap, no auto-alignment.
     case continuous = "continuous"
 }
