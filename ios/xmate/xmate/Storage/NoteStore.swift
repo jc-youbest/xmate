@@ -59,15 +59,46 @@ final class NoteStore: ObservableObject {
 
     // MARK: - Document lookup / creation
 
-    /// Load the Document with the given name (title), creating it (with one
-    /// empty page) if it doesn't exist. The App layer decides the name —
-    /// Storage never decides which document the app opens.
+    /// Load the Document with the given name (title), creating it as the
+    /// default A4 portrait document if it doesn't exist. The App layer decides
+    /// the name — Storage never decides which document the app opens.
     ///
     /// Legacy adoption: earlier builds used an anonymous "first document"
     /// lookup. If no document matches the name but one exists from those
     /// builds, it is renamed and adopted so existing handwriting survives.
     @discardableResult
     func loadOrCreateDocument(named name: String) -> Document {
+        loadOrCreateDocument(
+            named: name,
+            pageSpec: PagePresetCatalog.currentDocumentPageSpec,
+            presetID: PagePresetCatalog.currentDocumentPagePresetID,
+            allowsLegacyAdoption: true
+        )
+    }
+
+    /// Load or create a named document using an explicit page preset. Existing
+    /// documents keep their persisted spec; the preset is applied only when a
+    /// new document is created.
+    @discardableResult
+    func loadOrCreateDocument(
+        named name: String,
+        pagePreset: PagePresetCatalog.Preset,
+        allowsLegacyAdoption: Bool = false
+    ) -> Document {
+        loadOrCreateDocument(
+            named: name,
+            pageSpec: pagePreset.spec,
+            presetID: pagePreset.id,
+            allowsLegacyAdoption: allowsLegacyAdoption
+        )
+    }
+
+    private func loadOrCreateDocument(
+        named name: String,
+        pageSpec: PageSpec,
+        presetID: String?,
+        allowsLegacyAdoption: Bool
+    ) -> Document {
         let request = NSFetchRequest<Document>(entityName: "Document")
         request.predicate = NSPredicate(format: "title == %@", name)
         request.fetchLimit = 1
@@ -75,27 +106,34 @@ final class NoteStore: ObservableObject {
             return existing
         }
 
-        let any = NSFetchRequest<Document>(entityName: "Document")
-        any.fetchLimit = 1
-        if let legacy = try? viewContext.fetch(any).first {
-            legacy.title = name
-            try? viewContext.save()
-            return legacy
+        if allowsLegacyAdoption {
+            let any = NSFetchRequest<Document>(entityName: "Document")
+            any.fetchLimit = 1
+            if let legacy = try? viewContext.fetch(any).first {
+                legacy.title = name
+                try? viewContext.save()
+                return legacy
+            }
         }
 
-        return createDocument(named: name)
+        return createDocument(
+            named: name,
+            pageSpec: pageSpec,
+            presetID: presetID
+        )
     }
 
-    private func createDocument(named name: String) -> Document {
+    private func createDocument(
+        named name: String,
+        pageSpec: PageSpec,
+        presetID: String?
+    ) -> Document {
         let doc = Document(context: viewContext)
         doc.id = UUID()
         doc.title = name
         doc.createdAt = Date()
         doc.updatedAt = Date()
-        doc.applyPageSpec(
-            PagePresetCatalog.currentDocumentPageSpec,
-            presetID: PagePresetCatalog.currentDocumentPagePresetID
-        )
+        doc.applyPageSpec(pageSpec, presetID: presetID)
 
         let page = Page(context: viewContext)
         page.id = UUID()

@@ -6,7 +6,9 @@
   into the environment.
 - RootView is the composition root: it decides WHICH document is
   opened and injects it into the editor. v1: hard-coded dev document
-  name resolved via `NoteStore.loadOrCreateDocument(named:)`.
+  name resolved via `NoteStore.loadOrCreateDocument(named:)`. DEBUG builds
+  may temporarily select a separate preset-specific dev document through
+  `DevDocumentPagePresetProbe`; this is not user-facing UI.
 - Global user preferences (SettingsStore, UserDefaults-backed).
 - Future: top-level switch between Social Screen and Content Screen;
   entry flows from inbox / drafts / new creation that resolve a Document

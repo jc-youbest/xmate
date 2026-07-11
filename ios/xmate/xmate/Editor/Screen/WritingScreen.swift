@@ -66,7 +66,8 @@ import SwiftUI
 #if DEBUG
 /// Local-only manual layout probe. Keep nil for normal development; set to a
 /// PagePresetCatalog spec such as `PagePresetCatalog.a4Landscape` to exercise
-/// Single Page horizontal flow without adding user-facing preset UI.
+/// layout without writing Core Data. Prefer RootView's DevDocumentPagePresetProbe
+/// when the persisted document PageSpec path is what needs testing.
 //private let debugEditorPageSpecOverride: PageSpec? = PagePresetCatalog.a4Landscape
 private let debugEditorPageSpecOverride: PageSpec? = nil
 

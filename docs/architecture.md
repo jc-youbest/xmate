@@ -58,6 +58,10 @@ The editor never decides which document it shows.
 
 - v1: `RootView` resolves a hard-coded dev document name through
   `NoteStore.loadOrCreateDocument(named:)` and injects the `Document`.
+  DEBUG builds can opt into a separate named dev document for one preset
+  via `DevDocumentPagePresetProbe`; this exercises the same persisted
+  document PageSpec path without adding user-facing preset UI or mutating
+  the default A4 portrait dev document.
 - Future sources — inbox (social), drafts/list (Library), new creation —
   all resolve a `Document` outside the editor and inject it the same way.
 
@@ -99,7 +103,9 @@ layout policy. Legacy v1 documents may have nil or zero page-spec fields,
 so `Document.resolvedPageSpec` computes a safe A4 portrait fallback without
 rewriting drawing blobs or treating migration normalization as a document
 edit. New documents persist the A4 portrait preset id and dimensions once
-at creation.
+at creation. `NoteStore` also exposes a typed preset creation path for the
+App layer; the preset is applied only when creating a new named document,
+while existing documents keep their persisted page spec.
 
 Future ownership decision: page specification belongs to the `Document`,
 not each `Page` and not `SettingsStore`. xmate documents are ordered

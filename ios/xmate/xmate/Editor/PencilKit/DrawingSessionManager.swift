@@ -51,7 +51,7 @@ import os
 /// to read a trace and the bugs it has caught.
 enum EditorTrace {
     #if DEBUG
-    static var isEnabled = true  // TEMP: revert to false after the F-059 perf measurement
+    static var isEnabled = false
     private static let logger = Logger(subsystem: "com.cwc.xmate",
                                        category: "EditorLifecycle")
     static func event(_ message: @autoclosure () -> String) {

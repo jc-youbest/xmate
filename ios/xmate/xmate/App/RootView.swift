@@ -21,6 +21,26 @@
 
 import SwiftUI
 
+#if DEBUG
+/// DEBUG-only document preset probe. Keep `presetID` nil for the normal dev
+/// A4 portrait document; set it to one of PagePresetCatalog's ids to create
+/// and reopen a separate persisted dev document with that page spec.
+private enum DevDocumentPagePresetProbe {
+    static let presetID: String? = "a4-landscape"
+    // static let presetID: String? = "postcard-portrait"
+    // static let presetID: String? = "postcard-landscape"
+    // static let presetID: String? = nil
+
+    static var preset: PagePresetCatalog.Preset? {
+        PagePresetCatalog.preset(forID: presetID)
+    }
+
+    static func documentName(for preset: PagePresetCatalog.Preset) -> String {
+        "dev-\(preset.id)-document"
+    }
+}
+#endif
+
 struct RootView: View {
     @EnvironmentObject var store: NoteStore
 
@@ -46,9 +66,25 @@ struct RootView: View {
             // v1 hard-coded document selection — the ONLY place in the
             // app that decides which document is opened.
             if document == nil {
-                document = store.loadOrCreateDocument(named: Self.devDocumentName)
+                document = resolveDevDocument()
             }
         }
+    }
+
+    private func resolveDevDocument() -> Document {
+        #if DEBUG
+        if let preset = DevDocumentPagePresetProbe.preset {
+            let name = DevDocumentPagePresetProbe.documentName(for: preset)
+            print("[DEV-PAGE-PRESET] document=\(name) preset=\(preset.name)")
+            return store.loadOrCreateDocument(
+                named: name,
+                pagePreset: preset,
+                allowsLegacyAdoption: false
+            )
+        }
+        #endif
+
+        return store.loadOrCreateDocument(named: Self.devDocumentName)
     }
 }
 
