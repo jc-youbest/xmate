@@ -33,10 +33,11 @@
 // to its viewport slot, so it never overflows into neighbours or the top bar.
 // Page-turn swipes fire only at fit (suspended once zoomed in).
 //
-// Active-canvas handoff: identical to Continuous — this view declares the
-// desired active page via DrawingSessionManager.setDesiredActive on appear
-// and on every page change; the manager promotes that page's canvas
-// (flush previous → reload → first responder → bind ToolPicker).
+// Active-canvas handoff: this view declares the desired active page via
+// DrawingSessionManager.setDesiredActive on appear and on every page change.
+// The current page is registered visible immediately so ToolPicker ownership
+// can transfer without a nil-anchor gap; Pencil hit testing opens after the
+// short editing-readiness window.
 
 import SwiftUI
 
@@ -99,7 +100,7 @@ struct SinglePagesView: View, Equatable {
                     let delta = CGFloat(index - currentPageIndex)
                     let pageOffset = flowAxis.pageOffset(delta: delta, stride: stride)
                     let isCurrentPage = index == currentPageIndex
-                    let isEditablePage = isCurrentPage && page.id == editablePageID
+                    let isHitTestReadyPage = isCurrentPage && page.id == editablePageID
 
                     // Each page is a UIScrollView-backed zoomable page: it fits
                     // the page to the viewport and owns its own pinch / pan /
@@ -116,12 +117,12 @@ struct SinglePagesView: View, Equatable {
                         onZoomChange: onZoomChange,
                         onZoomResetRequested: onZoomResetRequested,
                         onZoomResetCompleted: onZoomResetCompleted,
-                        isCurrentPage: isEditablePage,
+                        isCurrentPage: isCurrentPage,
                         resetToken: resetToken
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .offset(x: pageOffset.width, y: pageOffset.height)
-                    .allowsHitTesting(isEditablePage)
+                    .allowsHitTesting(isHitTestReadyPage)
                     .zIndex(isCurrentPage ? 1 : 0)
                 }
             }

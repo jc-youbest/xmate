@@ -446,13 +446,18 @@ a zoom reset reports completion; fit-state pages do not claim completion for a
 structural-operation precondition they did not satisfy.
 Single Page still keeps every page canvas mounted to avoid page-turn flicker,
 but DrawingSessionManager visibility is narrower than SwiftUI lifetime: only
-the current page index is registered as visible and hit-testable. Off-screen
-pages remain warm but cannot become the ToolPicker anchor or receive Pencil
-input during add-page restore/page-turn churn. After a Single Page index/page
-list change, Pencil hit testing is held closed for one short activation window;
-then the current page is re-registered visible and re-declared desired active.
-This prevents a very fast first stroke after zoomed Add Page from landing
-before the new page's PencilKit/ToolPicker handoff has stabilized.
+the current page index is registered as visible for ToolPicker/active-canvas
+handoff. Off-screen pages remain warm but cannot become the ToolPicker anchor.
+Pencil hit testing is a separate readiness gate: after a Single Page
+index/page-list change, hit testing is held closed for one short activation
+window, then the current page is re-declared desired active. This keeps
+ToolPicker ownership continuous during page turns while still preventing a
+very fast first stroke after zoomed Add Page from landing before the new
+page's handoff has stabilized.
+Returning to a warm page still re-promotes its canvas if it is not the
+current ToolPicker anchor, even when that page already has the same
+authoritative canvas in `activeByPage`; otherwise backward paging falls
+through to first-responder recovery and creates a visible picker gap.
 
 *Rejected as the final Continuous design:* persistent inner zoom scroll views
 per page. Device testing proved that path smooth, but when the viewport showed
