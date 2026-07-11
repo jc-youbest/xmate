@@ -211,9 +211,13 @@ Persistent-offset carousel (SinglePagesView). A page turn animates
 canvas is created or destroyed (principle 3) — the flip is flicker-free
 and the departing page needs no emergency flush (it stays alive;
 DrawingSessionManager hands the active-editor role over explicitly).
-Swipe axis derives from paper orientation (portrait → vertical,
-landscape → horizontal). *Rejected:* rebuilding the page view per turn
-(flicker).
+Swipe axis, stride extent, and page offsets derive from
+`EditorLayoutContext.flowAxis`: vertical flow uses up/down swipes and
+Y offsets; horizontal flow uses left/right swipes and X offsets. The
+current default A4 portrait context resolves to vertical flow, so legacy
+Single Page behavior stays unchanged. *Rejected:* rebuilding the page
+view per turn (flicker); branching on preset names such as A4 landscape
+or postcard.
 
 ### Continuous paging
 

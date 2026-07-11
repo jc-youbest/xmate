@@ -16,7 +16,7 @@
 //   .singlePage  → SinglePagesView: persistent offset carousel — all page
 //                  canvases stay alive; a flip animates offsets only (no
 //                  canvas destruction → no flicker). Flip axis derives from
-//                  paper.paginationAxis.
+//                  EditorLayoutContext.flowAxis.
 //   .continuous  → ContinuousPagesView: free-scroll stack along
 //                  paper.paginationAxis with 20 pt gaps and geometric
 //                  current-page detection.
@@ -63,6 +63,15 @@
 
 import SwiftUI
 
+#if DEBUG
+/// Local-only manual layout probe. Keep nil for normal development; set to a
+/// PagePresetCatalog spec such as `PagePresetCatalog.a4Landscape` to exercise
+/// Single Page horizontal flow without adding user-facing preset UI.
+//private let debugEditorPageSpecOverride: PageSpec? = PagePresetCatalog.a4Landscape
+private let debugEditorPageSpecOverride: PageSpec? = nil
+
+#endif
+
 struct WritingScreen: View {
     @EnvironmentObject var store: NoteStore
     @EnvironmentObject var settings: SettingsStore
@@ -82,9 +91,22 @@ struct WritingScreen: View {
 
     private var resolvedLayoutContext: EditorLayoutContext {
         EditorLayoutContext(
-            configuration: editorConfiguration,
+            configuration: resolvedEditorConfiguration,
             presentationStyle: resolvedPresentationStyle
         )
+    }
+
+    private var resolvedEditorConfiguration: EditorConfiguration {
+        #if DEBUG
+        guard let pageSpec = debugEditorPageSpecOverride else {
+            return editorConfiguration
+        }
+        var configuration = editorConfiguration
+        configuration.pageSpec = pageSpec
+        return configuration
+        #else
+        return editorConfiguration
+        #endif
     }
 
     // MARK: - State

@@ -1,11 +1,10 @@
 // WritingScreen — Single Page layout
 //
 // One full page fills the viewport at a time. Finger swipes flip discretely
-// between pages along paper.paginationAxis: up/down for portrait paper,
-// left/right for landscape paper (F-051 / F-056 Direction by Paper
-// Orientation). Nothing in this file branches on a paper's name — the flip
-// axis, stride, and swipe directions all derive from the paper's dimensions,
-// so postcard (and any future preset) needs no code change here.
+// between pages along layoutContext.flowAxis: up/down for vertical flow,
+// left/right for horizontal flow. Nothing in this file branches on a paper's
+// name — the flip axis, stride, and swipe directions all derive from the
+// resolved layout context, so future presets need no code change here.
 //
 // PERSISTENT OFFSET CAROUSEL — the stage-4 redesign that removed the flicker.
 //
@@ -17,7 +16,7 @@
 //   Now ALL page canvases live permanently in a ZStack — the same
 //   all-canvases-alive decision ContinuousPagesView already made for the
 //   PKToolPicker (see F-056 "why plain VStack"). Each page is offset along
-//   the pagination axis by (index − currentPageIndex) × stride, where
+//   the flow axis by (index − currentPageIndex) × stride, where
 //   stride = viewport extent + gap, so exactly one page is on-screen.
 //   A page turn just animates currentPageIndex → every offset shifts by one
 //   stride. No canvas is created or destroyed → zero flicker, and the
@@ -85,10 +84,10 @@ struct SinglePagesView: View, Equatable {
 
     var body: some View {
         GeometryReader { proxy in
-            let vertical = (layoutContext.paginationAxis == .vertical)
+            let flowAxis = layoutContext.flowAxis
             // One full viewport per page: the next page sits exactly one
-            // stride away along the pagination axis.
-            let stride = (vertical ? proxy.size.height : proxy.size.width) + gapPt
+            // stride away along the resolved flow axis.
+            let stride = flowAxis.primaryExtent(of: proxy.size) + gapPt
 
             ZStack {
                 // Letterbox fill — matches ContinuousPagesView so both
@@ -98,6 +97,7 @@ struct SinglePagesView: View, Equatable {
 
                 ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
                     let delta = CGFloat(index - currentPageIndex)
+                    let pageOffset = flowAxis.pageOffset(delta: delta, stride: stride)
                     let isCurrentPage = index == currentPageIndex
                     let isEditablePage = isCurrentPage && page.id == editablePageID
 
@@ -110,7 +110,7 @@ struct SinglePagesView: View, Equatable {
                         page: page,
                         store: store,
                         layoutContext: layoutContext,
-                        swipeAxis: layoutContext.paginationAxis,
+                        swipeAxis: flowAxis.swipeAxis,
                         onSwipeForward: handleSwipeForward,
                         onSwipeBackward: handleSwipeBackward,
                         onZoomChange: onZoomChange,
@@ -120,8 +120,7 @@ struct SinglePagesView: View, Equatable {
                         resetToken: resetToken
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)
-                    .offset(x: vertical ? 0 : delta * stride,
-                            y: vertical ? delta * stride : 0)
+                    .offset(x: pageOffset.width, y: pageOffset.height)
                     .allowsHitTesting(isEditablePage)
                     .zIndex(isCurrentPage ? 1 : 0)
                 }
@@ -159,7 +158,7 @@ struct SinglePagesView: View, Equatable {
 
     private func logLayoutContext() {
         #if DEBUG
-        print("[EDITOR-LAYOUT] SinglePagesView \(layoutContext.debugDescription)")
+        print("[SINGLE-PAGE-LAYOUT] flowAxis=\(layoutContext.flowAxis.debugName)")
         #endif
     }
 
@@ -194,6 +193,31 @@ struct SinglePagesView: View, Equatable {
         guard currentPageIndex > 0 else { return }
         withAnimation(.easeInOut(duration: 0.25)) {
             currentPageIndex -= 1
+        }
+    }
+}
+
+private extension PageFlowAxis {
+    var swipeAxis: Axis {
+        switch self {
+        case .vertical: return .vertical
+        case .horizontal: return .horizontal
+        }
+    }
+
+    func primaryExtent(of size: CGSize) -> CGFloat {
+        switch self {
+        case .vertical: return size.height
+        case .horizontal: return size.width
+        }
+    }
+
+    func pageOffset(delta: CGFloat, stride: CGFloat) -> CGSize {
+        switch self {
+        case .vertical:
+            return CGSize(width: 0, height: delta * stride)
+        case .horizontal:
+            return CGSize(width: delta * stride, height: 0)
         }
     }
 }
