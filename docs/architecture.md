@@ -71,13 +71,12 @@ default flow-axis choices derive from page-spec data, not a paper name.
 only. Logical page size never changes with device; every iPad scales the
 page uniformly to fit, and handwriting never reflows.
 
-Current stage limitation: the document page spec is still fixed to A4
-portrait, but the data now flows through `PageSpec` / `PageSize` /
-`LayoutPolicy` and is adapted by `PageGeometry` back into the existing
-`PaperSize` runtime path. `PagePresetCatalog` carries A4 portrait, A4
-landscape, postcard portrait, and postcard landscape as data entries;
-only A4 portrait is selected by the current default configuration.
-Per-document paper still waits for the Core Data migration.
+Current stage: the document page spec is stored on `Document` as a preset
+id plus logical page width/height. `PagePresetCatalog` carries A4
+portrait, A4 landscape, postcard portrait, and postcard landscape as data
+entries; new documents persist A4 portrait by default. The data flows
+through `PageSpec` / `PageSize` / `LayoutPolicy` and is adapted by
+`PageGeometry` back into the existing `PaperSize` runtime path.
 
 Layout resolution is explicit and small: `EditorConfiguration` resolves
 the active `LayoutPolicy` from the selected `PageSpec` and current
@@ -91,14 +90,16 @@ page size/orientation, flow axis, presentation style, resolved policy, and
 the current bridged `PaperSize`; it is not observable state and does not
 select presets.
 
-Current persisted model audit: Core Data has exactly one model version.
-`Document` stores `id`, `title`, `createdAt`, `updatedAt`, and an ordered
-`pages` relationship. `Page` stores `id`, `drawingData`, `version`, and
-its inverse `document` relationship. Neither entity stores page width,
-height, orientation, page-spec id, preset id, or flow axis. Therefore the
-runtime currently assumes all pages in a document use the one
-editor-resolved page spec. Existing documents implicitly mean A4 portrait
-because that is the only default the editor has ever selected.
+Current persisted model: Core Data model version `xmate 2.xcdatamodel`
+adds `Document.pagePresetID`, `Document.logicalPageWidth`, and
+`Document.logicalPageHeight`. `Page` still stores only `id`,
+`drawingData`, `version`, and its inverse `document` relationship. Flow
+axis is not persisted; it is reconstructed from the resolved page spec and
+layout policy. Legacy v1 documents may have nil or zero page-spec fields,
+so `Document.resolvedPageSpec` computes a safe A4 portrait fallback without
+rewriting drawing blobs or treating migration normalization as a document
+edit. New documents persist the A4 portrait preset id and dimensions once
+at creation.
 
 Future ownership decision: page specification belongs to the `Document`,
 not each `Page` and not `SettingsStore`. xmate documents are ordered
@@ -110,16 +111,14 @@ ambiguous. `SettingsStore` may own the global presentation preference
 and runtime environment, and `EditorLayoutContext` is the value SwiftUI
 views consume.
 
-Future Core Data migration should add document-level page-spec fields:
+Core Data migration stores document-level page-spec fields only:
 `pagePresetID: String?`, `logicalPageWidth: Double`, and
-`logicalPageHeight: Double`. If the code keeps `PageSpec.flowAxis` as
-user/document policy rather than deriving it from page dimensions, add
-`pageFlowAxisRawValue: String` as a document-level field too; otherwise
-derive flow axis from the resolved preset or dimensions when building the
-runtime `PageSpec`. Existing stores should lightweight-migrate by
-defaulting these fields to A4 portrait (`pagePresetID = "a4-portrait"`,
-`logicalPageWidth = 595`, `logicalPageHeight = 842`, vertical flow if
-stored). Do not rewrite `Page.drawingData` during that migration.
+`logicalPageHeight: Double`. `PageSpec.flowAxis` remains runtime layout
+policy, not a persisted field in this increment; it is reconstructed from
+the resolved preset or from dimensions when building the runtime
+`PageSpec`. Existing stores lightweight-migrate with nil or zero added
+fields, then compute an A4 portrait fallback at read time. Do not rewrite
+`Page.drawingData` during migration or fallback resolution.
 
 PKDrawing persistence: each page's `drawingData` is
 `PKDrawing.dataRepresentation()` captured from a canvas whose bounds are

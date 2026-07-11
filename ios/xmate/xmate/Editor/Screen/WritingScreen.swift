@@ -56,10 +56,10 @@
 // Delete document (v1 stub): resets to a single blank page. F-011 will
 // replace this with navigation to NoteListScreen in v3.
 //
-// Paper: still fixed to the current document PageSpec (A4 portrait, vertical)
-// until the per-document Core Data migration lands. The spec is adapted through
-// PageGeometry into the existing PaperSize runtime type so the current views
-// keep their behavior exactly.
+// Paper: resolved from the injected Document's page spec. Legacy documents with
+// no stored page spec compute a safe A4 portrait fallback. The spec is adapted
+// through PageGeometry into the existing PaperSize runtime type so the current
+// views keep their behavior exactly.
 
 import SwiftUI
 
@@ -80,9 +80,9 @@ struct WritingScreen: View {
     /// (AppRoot). See file header.
     let document: Document
 
-    /// Stage limitation: per-document paper lands with the Core Data migration.
-    /// The new v2 model now owns the current A4 portrait data, but existing
-    /// viewport code still consumes PaperSize through PageGeometry's bridge.
+    /// Base editor configuration. The document supplies the page spec at render
+    /// time; existing viewport code still consumes PaperSize through
+    /// PageGeometry's bridge.
     private let editorConfiguration = EditorConfiguration.currentDefault
 
     private var resolvedPresentationStyle: PagePresentationStyle {
@@ -97,16 +97,16 @@ struct WritingScreen: View {
     }
 
     private var resolvedEditorConfiguration: EditorConfiguration {
-        #if DEBUG
-        guard let pageSpec = debugEditorPageSpecOverride else {
-            return editorConfiguration
-        }
         var configuration = editorConfiguration
-        configuration.pageSpec = pageSpec
-        return configuration
-        #else
-        return editorConfiguration
+        #if DEBUG
+        if let pageSpec = debugEditorPageSpecOverride {
+            configuration.pageSpec = pageSpec
+            return configuration
+        }
         #endif
+
+        configuration.pageSpec = document.resolvedPageSpec
+        return configuration
     }
 
     // MARK: - State
@@ -488,9 +488,39 @@ struct WritingScreen: View {
     // MARK: - Load
 
     private func loadPages() {
+        logDocumentPageSpec()
         logResolvedEditorLayout()
         pages = store.pages(of: document)
         currentPageIndex = 0
+    }
+
+    private func logDocumentPageSpec() {
+        #if DEBUG
+        let resolution = document.pageSpecResolution
+        let pageSpec: PageSpec
+        let source: String
+
+        if let debugPageSpec = debugEditorPageSpecOverride {
+            pageSpec = debugPageSpec
+            source = "debugOverride"
+        } else {
+            pageSpec = resolution.pageSpec
+            source = resolution.source.rawValue
+        }
+
+        let preset = PagePresetCatalog.name(for: pageSpec)
+            ?? PagePresetCatalog.preset(forID: resolution.presetID)?.name
+            ?? "custom"
+        let orientation = pageSpec.size.width > pageSpec.size.height
+            ? "landscape"
+            : "portrait"
+        print("[DOCUMENT-PAGE-SPEC] "
+            + "documentID=\(document.id?.uuidString ?? "nil") "
+            + "preset=\(preset) "
+            + "page=\(Int(pageSpec.size.width))x\(Int(pageSpec.size.height)) "
+            + "orientation=\(orientation) "
+            + "source=\(source)")
+        #endif
     }
 
     private func logResolvedEditorLayout() {

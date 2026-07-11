@@ -92,6 +92,10 @@ final class NoteStore: ObservableObject {
         doc.title = name
         doc.createdAt = Date()
         doc.updatedAt = Date()
+        doc.applyPageSpec(
+            PagePresetCatalog.currentDocumentPageSpec,
+            presetID: PagePresetCatalog.currentDocumentPagePresetID
+        )
 
         let page = Page(context: viewContext)
         page.id = UUID()

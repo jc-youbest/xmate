@@ -18,10 +18,13 @@ enum PagePresetCatalog {
         flowAxis: .vertical
     )
 
+    static let defaultPresetID = "a4-portrait"
+
     /// Temporary v2 bridge: the current document/page paper specification.
     /// Replaces WritingScreen's direct PaperPreset.letter dependency without
     /// changing the visible page size or pagination direction.
     static let currentDocumentPageSpec = a4Portrait
+    static let currentDocumentPagePresetID = defaultPresetID
 
     static let a4Landscape = PageSpec(
         size: .a4Landscape,
@@ -47,5 +50,14 @@ enum PagePresetCatalog {
 
     static func name(for spec: PageSpec) -> String? {
         presets.first(where: { $0.spec == spec })?.name
+    }
+
+    static func preset(forID id: String?) -> Preset? {
+        guard let id else { return nil }
+        return presets.first(where: { $0.id == id })
+    }
+
+    static func presetID(for spec: PageSpec) -> String? {
+        presets.first(where: { $0.spec == spec })?.id
     }
 }
