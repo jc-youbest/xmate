@@ -48,13 +48,17 @@ struct RootView: View {
     /// creation flows when they land.
     private static let devDocumentName = "dev-default-document"
 
-    /// The document the Content Screen edits. Resolved once on appear.
-    @State private var document: Document?
+    /// The document open result. Resolved and validated once on appear before
+    /// the editor is allowed to load.
+    @State private var documentState: DocumentState = .resolving
+    @State private var presentedOpenError: DocumentOpenError?
 
     var body: some View {
         Group {
-            if let document {
+            if case .ready(let document) = documentState {
                 WritingScreen(document: document)
+            } else if case .failed(let error) = documentState {
+                DocumentOpenErrorView(error: error)
             } else {
                 // One-frame placeholder while the document resolves;
                 // matches the editor's letterbox background.
@@ -65,9 +69,46 @@ struct RootView: View {
         .onAppear {
             // v1 hard-coded document selection — the ONLY place in the
             // app that decides which document is opened.
-            if document == nil {
-                document = resolveDevDocument()
+            if case .resolving = documentState {
+                resolveAndValidateDevDocument()
             }
+        }
+        .alert(
+            "Cannot Open Document",
+            isPresented: Binding(
+                get: { presentedOpenError != nil },
+                set: { if !$0 { presentedOpenError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let presentedOpenError {
+                Text("\(presentedOpenError.message)\nCode: \(presentedOpenError.code.rawValue)")
+            }
+        }
+        .background {
+            if case .ready(let document) = documentState {
+                WindowOrientationPolicyBridge(
+                    policy: .preferred(for: document)
+                )
+                .frame(width: 0, height: 0)
+            }
+        }
+    }
+
+    private enum DocumentState {
+        case resolving
+        case ready(Document)
+        case failed(DocumentOpenError)
+    }
+
+    private func resolveAndValidateDevDocument() {
+        let resolvedDocument = resolveDevDocument()
+        if let error = DocumentOpenValidator.validate(resolvedDocument) {
+            documentState = .failed(error)
+            presentedOpenError = error
+        } else {
+            documentState = .ready(resolvedDocument)
         }
     }
 
@@ -85,6 +126,26 @@ struct RootView: View {
         #endif
 
         return store.loadOrCreateDocument(named: Self.devDocumentName)
+    }
+}
+
+private struct DocumentOpenErrorView: View {
+    let error: DocumentOpenError
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Cannot Open Document")
+                .font(.headline)
+            Text(error.message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text("Code: \(error.code.rawValue)")
+                .font(.footnote)
+                .monospaced()
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
     }
 }
 

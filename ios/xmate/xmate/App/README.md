@@ -9,6 +9,12 @@
   name resolved via `NoteStore.loadOrCreateDocument(named:)`. DEBUG builds
   may temporarily select a separate preset-specific dev document through
   `DevDocumentPagePresetProbe`; this is not user-facing UI.
+- RootView owns the App-layer editor window orientation policy bridge:
+  it may request a scene orientation matching the injected document's page
+  orientation, while the editor still adapts to the actual viewport.
+- RootView validates a resolved document before loading WritingScreen.
+  Validation errors are App-layer document-open failures with stable error
+  codes; the editor is not loaded on failure.
 - Global user preferences (SettingsStore, UserDefaults-backed).
 - Future: top-level switch between Social Screen and Content Screen;
   entry flows from inbox / drafts / new creation that resolve a Document
@@ -18,6 +24,10 @@
 
 - `xmateApp.swift` — `@main`; hosts RootView
 - `RootView.swift` — composition root; document resolution
+- `DocumentOpenValidation.swift` — pre-editor document validation and
+  document-open error codes
+- `EditorWindowOrientationPolicy.swift` — document-to-window orientation
+  preference bridge
 - `SettingsStore.swift` — global preferences (PaginationStyle)
 
 ## Not responsible for

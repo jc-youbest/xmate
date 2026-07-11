@@ -154,18 +154,25 @@ it becomes authoritative.
 
 The app target currently generates its Info.plist from build settings.
 For iPad (`TARGETED_DEVICE_FAMILY = 2`), both Debug and Release declare
-`UISupportedInterfaceOrientations_iPad` as portrait and portrait-upside-
-down only. The iPhone orientation keys are irrelevant because the target
-is iPad-only. There is no AppDelegate/SceneDelegate orientation override,
-no `UIWindowScene.requestGeometryUpdate` call, no `UIDevice` orientation
-forcing, and no runtime consumer of `PaperSize.orientationLock`.
+portrait and landscape interface orientations. The iPhone orientation keys
+are irrelevant because the target is iPad-only. There is no `UIDevice`
+orientation forcing.
 
-Consequently, changing `PageSpec` today changes logical page dimensions,
-resolved flow axis, and rendering/fit geometry only. It does not rotate
-the app window or the editor chrome. A landscape page displayed in the
-current iPad target is a landscape sheet fitted inside a portrait editor
-viewport, which is why it appears like a landscape photo in a portrait
-frame and leaves vertical unused space.
+`RootView` derives an `EditorWindowOrientationPolicy` from the injected
+document's resolved page spec and installs `WindowOrientationPolicyBridge`,
+an App-layer UIKit bridge that calls `UIWindowScene.requestGeometryUpdate`
+for the current window scene. This keeps the editor's document model clean:
+`PageSpec` remains paper semantics, while the App layer may request a
+matching window orientation when the opened document is portrait or
+landscape. The request is best-effort; iPadOS may provide a different
+viewport in Split View, Stage Manager, or external display scenarios.
+
+Before injecting a document into `WritingScreen`, `RootView` runs
+`DocumentOpenValidator`. Open-time document failures are App-layer errors
+with stable codes, not editor states. `XMATE-DOC-0001` means invalid
+document orientation; the current validator treats square page orientation
+as invalid. On validation failure, RootView presents the error and does
+not load the editor or install the window-orientation bridge.
 
 Page orientation and window orientation are different contracts. Page
 orientation is stable document content semantics. Window orientation is
