@@ -13,7 +13,23 @@ struct EditorWindowOrientationPolicy: Equatable {
     let debugName: String
 
     static func preferred(for document: Document) -> EditorWindowOrientationPolicy {
-        switch document.resolvedPageSpec.size.orientation {
+        if let preset = PagePresetCatalog.preset(forID: document.pagePresetID) {
+            return preferred(for: preset.spec.size.orientation)
+        }
+
+        // The document-open validator should reject invalid presets before the
+        // editor loads. Keep a neutral fallback here so this bridge is defensive
+        // without becoming a second validation path.
+        return EditorWindowOrientationPolicy(
+            preferredInterfaceOrientations: .all,
+            debugName: "all"
+        )
+    }
+
+    private static func preferred(
+        for orientation: PageOrientation
+    ) -> EditorWindowOrientationPolicy {
+        switch orientation {
         case .portrait:
             return EditorWindowOrientationPolicy(
                 preferredInterfaceOrientations: [.portrait, .portraitUpsideDown],
@@ -30,6 +46,21 @@ struct EditorWindowOrientationPolicy: Equatable {
                 debugName: "all"
             )
         }
+    }
+}
+
+final class EditorWindowOrientationPolicyStore {
+    static let shared = EditorWindowOrientationPolicyStore()
+
+    private init() {}
+
+    private(set) var supportedInterfaceOrientations: UIInterfaceOrientationMask = [
+        .portrait,
+        .portraitUpsideDown,
+    ]
+
+    func apply(_ policy: EditorWindowOrientationPolicy) {
+        supportedInterfaceOrientations = policy.preferredInterfaceOrientations
     }
 }
 
@@ -66,6 +97,7 @@ struct WindowOrientationPolicyBridge: UIViewRepresentable {
             }
 
             lastRequestedMask = policy.preferredInterfaceOrientations
+            EditorWindowOrientationPolicyStore.shared.apply(policy)
             window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             windowScene.requestGeometryUpdate(
                 .iOS(interfaceOrientations: policy.preferredInterfaceOrientations)

@@ -22,17 +22,19 @@
 import SwiftUI
 
 #if DEBUG
-/// DEBUG-only document preset probe. Keep `presetID` nil for the normal dev
-/// A4 portrait document; set it to one of PagePresetCatalog's ids to create
-/// and reopen a separate persisted dev document with that page spec.
+/// DEBUG-only document creation probe. This is not a layout source: it only
+/// picks which persisted dev document to create/open. Once the Document is
+/// loaded, its stored `pagePresetID` is the source for validation, editor
+/// layout, and window orientation.
 private enum DevDocumentPagePresetProbe {
-    static let presetID: String? = "a4-landscape"
-    // static let presetID: String? = "postcard-portrait"
-    // static let presetID: String? = "postcard-landscape"
-    // static let presetID: String? = nil
+    static let creationPresetID: String? = Bool.random()
+        ? "a4-landscape"
+        : "a4-portrait"
+    // static let creationPresetID: String? = "postcard-landscape"
+    // static let creationPresetID: String? = nil
 
     static var preset: PagePresetCatalog.Preset? {
-        PagePresetCatalog.preset(forID: presetID)
+        PagePresetCatalog.preset(forID: creationPresetID)
     }
 
     static func documentName(for preset: PagePresetCatalog.Preset) -> String {
@@ -108,6 +110,9 @@ struct RootView: View {
             documentState = .failed(error)
             presentedOpenError = error
         } else {
+            EditorWindowOrientationPolicyStore.shared.apply(
+                .preferred(for: resolvedDocument)
+            )
             documentState = .ready(resolvedDocument)
         }
     }
@@ -116,7 +121,7 @@ struct RootView: View {
         #if DEBUG
         if let preset = DevDocumentPagePresetProbe.preset {
             let name = DevDocumentPagePresetProbe.documentName(for: preset)
-            print("[DEV-PAGE-PRESET] document=\(name) preset=\(preset.name)")
+            print("[DEV-PAGE-PRESET] createOrOpen=\(name) creationPreset=\(preset.name)")
             return store.loadOrCreateDocument(
                 named: name,
                 pagePreset: preset,

@@ -107,6 +107,18 @@ at creation. `NoteStore` also exposes a typed preset creation path for the
 App layer; the preset is applied only when creating a new named document,
 while existing documents keep their persisted page spec.
 
+Opening a document is stricter than resolving a fallback. Storage may still
+compute safe fallback values for old or partial records, but the App layer must
+validate the raw persisted document preset before the editor is created. The
+current open policy accepts only `a4-portrait`, `a4-landscape`, and
+`postcard-landscape`; catalogue entries that are not in that allow-list remain
+data-only until their editor behavior is intentionally enabled. A valid open
+also requires the stored logical width/height to match the selected preset.
+Once validation passes, `Document.pagePresetID` is the preset source for
+editor layout and for the App-layer window orientation policy. DEBUG creation
+probes may choose which persisted dev document to create, but they are not a
+runtime layout source after the document has loaded.
+
 Future ownership decision: page specification belongs to the `Document`,
 not each `Page` and not `SettingsStore`. xmate documents are ordered
 stationery sheets of one paper kind; a mid-document paper change would
@@ -158,21 +170,26 @@ portrait and landscape interface orientations. The iPhone orientation keys
 are irrelevant because the target is iPad-only. There is no `UIDevice`
 orientation forcing.
 
-`RootView` derives an `EditorWindowOrientationPolicy` from the injected
-document's resolved page spec and installs `WindowOrientationPolicyBridge`,
-an App-layer UIKit bridge that calls `UIWindowScene.requestGeometryUpdate`
-for the current window scene. This keeps the editor's document model clean:
-`PageSpec` remains paper semantics, while the App layer may request a
-matching window orientation when the opened document is portrait or
-landscape. The request is best-effort; iPadOS may provide a different
-viewport in Split View, Stage Manager, or external display scenarios.
+`RootView` derives an `EditorWindowOrientationPolicy` from the validated
+document preset before the editor is loaded. That policy is written to the
+App-layer `EditorWindowOrientationPolicyStore`, which is also the source used
+by `UIApplicationDelegate.application(_:supportedInterfaceOrientationsFor:)`.
+`WindowOrientationPolicyBridge` then calls `UIWindowScene.requestGeometryUpdate`
+for the current window scene as a best-effort rotation request. This keeps the
+editor's document model clean: `PageSpec` remains paper semantics, while the
+App layer owns the supported/preferred window orientation when the opened
+document is portrait or landscape. iPadOS may still reject a programmatic
+rotation request in Split View, Stage Manager, or other resizable-window
+scenarios, so views must always adapt to the actual viewport.
 
 Before injecting a document into `WritingScreen`, `RootView` runs
 `DocumentOpenValidator`. Open-time document failures are App-layer errors
 with stable codes, not editor states. `XMATE-DOC-0001` means invalid
-document orientation; the current validator treats square page orientation
-as invalid. On validation failure, RootView presents the error and does
-not load the editor or install the window-orientation bridge.
+document orientation; `XMATE-DOC-0002` means invalid document preset;
+`XMATE-DOC-0003` means the stored logical page size does not match the
+document preset. The current validator treats square page orientation as
+invalid. On validation failure, RootView presents the error and does not load
+the editor or install the window-orientation bridge.
 
 Page orientation and window orientation are different contracts. Page
 orientation is stable document content semantics. Window orientation is
@@ -207,7 +224,7 @@ landscape canvas inside portrait chrome, or a horizontal page flow inside
 an independently portrait top bar. Page-specific components may adapt
 their layout from abstract values such as `PageFlowAxis`, presentation
 style, page size, and viewport dimensions, but the app/window orientation
-request has one owner: `RootView` through `EditorWindowOrientationPolicy`.
+policy has one owner: `RootView` through `EditorWindowOrientationPolicy`.
 
 Landscape support was able to reuse the existing portrait editor behavior
 because the core responsibilities are separated. `PageSpec` and
