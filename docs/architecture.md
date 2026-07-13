@@ -197,6 +197,52 @@ document opens and the app is full-screen, while still adapting correctly
 when iPadOS gives the app a portrait, split, Stage Manager, or external
 display window.
 
+The orientation bridge is intentionally centralized at the App layer.
+Document page orientation may influence the preferred window orientation,
+but WritingTopBar, page presentation views, zoom views, and PencilKit
+canvases must not make independent interface-orientation requests. They
+all consume the same `EditorLayoutContext` and the same SwiftUI viewport
+supplied by the window. This prevents conflicting states such as a
+landscape canvas inside portrait chrome, or a horizontal page flow inside
+an independently portrait top bar. Page-specific components may adapt
+their layout from abstract values such as `PageFlowAxis`, presentation
+style, page size, and viewport dimensions, but the app/window orientation
+request has one owner: `RootView` through `EditorWindowOrientationPolicy`.
+
+Landscape support was able to reuse the existing portrait editor behavior
+because the core responsibilities are separated. `PageSpec` and
+`PageSize` describe paper identity; `LayoutPolicy` resolves presentation
+style and flow axis; `EditorLayoutContext` passes that resolved value
+through the view hierarchy; `PageGeometry` bridges the new model into the
+older runtime layout path; and `EditorOperationStateMachine` sequences
+operations such as reset-before-add-page independently of page shape or
+flow direction. As a result, landscape Single Page and Continuous flows
+reuse the same PencilKit canvas ownership, zoom/pan behavior, double-tap
+reset, ToolPicker handling, and add-page transaction ordering that were
+stabilized for A4 portrait. New page presets should therefore enter the
+system as data and policy inputs, not as preset-name branches in layout
+consumers.
+
+There are three separate orientation concepts:
+
+- Page orientation: stable document semantics derived from the page spec,
+  such as A4 portrait or A4 landscape.
+- Window/app orientation: the current interface orientation of the iPadOS
+  window that contains the editor.
+- Device orientation: how the user is physically holding the iPad.
+
+The app may request a window orientation that matches the document page
+orientation, but iPadOS remains authoritative. `requestGeometryUpdate` can
+fail in some windowing modes, including Split View, Stage Manager, or other
+resizable-window configurations. That failure does not mean layout is
+invalid; it only means the system declined a programmatic rotation request.
+When the target declares both portrait and landscape support, iPadOS may
+still rotate the app later in response to device orientation or windowing
+mode changes. The editor must handle both outcomes: use the document's
+page orientation to resolve paper and preferred flow, and use the actual
+window viewport to size and place WritingTopBar, pages, zoom surfaces, and
+canvas content.
+
 `EditorCommand` / `ViewportCommand` / `DrawingCommand` are inert command
 values that describe future editor transactions such as scroll-to-page,
 zoom reset, page selection, viewport-anchor preservation, and drawing
