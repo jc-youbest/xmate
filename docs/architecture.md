@@ -375,6 +375,15 @@ pages partly visible. Programmatic moves use a one-way `scrollTarget`
 UUID signal. *Rejected:* `LazyVStack` (tool picker breaks);
 `.scrollPosition(id:)` two-way binding (snap loop — principle 6).
 
+Continuous page flow is axis-aware through `EditorLayoutContext.flowAxis`.
+Vertical flow stacks pages top-to-bottom and tracks the viewport center along
+Y; horizontal flow stacks pages left-to-right and tracks along X. The runtime
+does not branch on preset names such as A4 landscape or postcard landscape.
+Both the legacy SwiftUI Continuous path and the native Continuous stack path
+derive their scroll axis from the resolved layout context, so A4 portrait keeps
+the same vertical behavior while landscape presets can move through the same
+layout policy path as Single Page.
+
 ### Zoom
 
 Whole-page zoom 1×–3× (PageZoomModel owns state and gesture math),
@@ -489,16 +498,19 @@ will bound each zoom session to the page group visible when the pinch begins;
 whole-document free zoom is not the product model. Keep this as a sibling path
 behind a feature flag until device acceptance.
 
-The native stack controller owns an explicit height constraint for the hosted
-SwiftUI page stack: top/bottom padding, page count, page height, and inter-page
-gaps determine `UIScrollView.contentSize`. Do not rely only on
-`UIHostingController` intrinsic-size invalidation after page mutation; device
-testing showed Add Page could update the SwiftUI page array and top-bar count
-while the scroll view still clamped programmatic scroll to the old content
-height. Native stack zoom-display reports are also deferred to the next main
-queue turn before they update `WritingScreen` state; `UIScrollViewDelegate`
-zoom callbacks can occur during representable update/layout, and synchronously
-publishing SwiftUI state from that path produces undefined-behavior warnings.
+The native stack controller owns an explicit primary-axis content-length
+constraint for the hosted SwiftUI page stack. In vertical flow, the host width
+matches the viewport and the explicit length is height; in horizontal flow,
+the host height matches the viewport and the explicit length is width. Padding,
+page count, scaled page primary extent, and inter-page gaps determine
+`UIScrollView.contentSize`. Do not rely only on `UIHostingController`
+intrinsic-size invalidation after page mutation; device testing showed Add Page
+could update the SwiftUI page array and top-bar count while the scroll view
+still clamped programmatic scroll to the old content length. Native stack
+zoom-display reports are also deferred to the next main queue turn before they
+update `WritingScreen` state; `UIScrollViewDelegate` zoom callbacks can occur
+during representable update/layout, and synchronously publishing SwiftUI state
+from that path produces undefined-behavior warnings.
 Single Page uses the same rule for its per-page zoom scroll views. A shared
 reset token reaches every hosted page, but only the page that actually performs
 a zoom reset reports completion; fit-state pages do not claim completion for a

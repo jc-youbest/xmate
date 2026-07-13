@@ -116,7 +116,7 @@ struct ContinuousPagesView: View, Equatable {
             let fitScale = layoutContext.fitScale(in: proxy.size)
             let scaledW  = paper.width  * fitScale
             let scaledH  = paper.height * fitScale
-            let vertical = paper.isPortrait  // scroll axis
+            let vertical = layoutContext.flowAxis == .vertical
 
             ScrollViewReader { scrollProxy in
                 ScrollView(vertical ? .vertical : .horizontal,

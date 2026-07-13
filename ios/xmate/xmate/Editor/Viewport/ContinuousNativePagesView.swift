@@ -139,8 +139,10 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> ContinuousNativeScrollController {
         let content = makeContent()
         let paper = layoutContext.paper
+        let flowAxis = layoutContext.flowAxis
         let controller = ContinuousNativeScrollController(
             content: content,
+            flowAxis: flowAxis,
             diagnostics: diagnostics,
             zoomPrototype: zoomPrototype,
             onZoomChange: onZoomChange,
@@ -149,7 +151,13 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
         )
         controller.configure(
             pageIDs: pages.compactMap(\.id),
-            pageHeight: paper.height * fitScale,
+            flowAxis: flowAxis,
+            pagePrimaryExtent: flowAxis.primaryExtent(
+                of: CGSize(
+                    width: paper.width * fitScale,
+                    height: paper.height * fitScale
+                )
+            ),
             gapPt: gapPt,
             restorePageIndex: restorePageIndex,
             resetToken: resetToken,
@@ -161,12 +169,19 @@ private struct ContinuousNativeScrollContainer: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: ContinuousNativeScrollController,
                                 context: Context) {
         let paper = layoutContext.paper
+        let flowAxis = layoutContext.flowAxis
         controller.updateContent(makeContent())
         controller.updateZoomResetHandler(onZoomResetRequested)
         controller.updateZoomResetCompletionHandler(onZoomResetCompleted)
         controller.configure(
             pageIDs: pages.compactMap(\.id),
-            pageHeight: paper.height * fitScale,
+            flowAxis: flowAxis,
+            pagePrimaryExtent: flowAxis.primaryExtent(
+                of: CGSize(
+                    width: paper.width * fitScale,
+                    height: paper.height * fitScale
+                )
+            ),
             gapPt: gapPt,
             restorePageIndex: restorePageIndex,
             resetToken: resetToken,
@@ -208,24 +223,44 @@ private struct ContinuousNativePageStack: View {
         let scaledW = paper.width * fitScale
         let scaledH = paper.height * fitScale
 
-        VStack(spacing: gapPt) {
-            ForEach(pages, id: \.id) { page in
-                ContinuousNativePageHost(
-                    page: page,
-                    store: store,
-                    zoomPrototype: zoomPrototype,
-                    diagnostics: diagnostics
-                )
-                .frame(width: paper.width, height: paper.height)
-                .scaleEffect(fitScale)
-                .frame(width: scaledW, height: scaledH)
-                .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 0)
-                .id(page.id)
+        Group {
+            switch layoutContext.flowAxis {
+            case .vertical:
+                VStack(spacing: gapPt) {
+                    pageItems(paper: paper, scaledW: scaledW, scaledH: scaledH)
+                }
+                .padding(.vertical, gapPt)
+                .frame(width: viewport.width)
+            case .horizontal:
+                HStack(spacing: gapPt) {
+                    pageItems(paper: paper, scaledW: scaledW, scaledH: scaledH)
+                }
+                .padding(.horizontal, gapPt)
+                .frame(height: viewport.height)
             }
         }
-        .padding(.vertical, gapPt)
-        .frame(width: viewport.width)
         .background(Color(.systemGroupedBackground))
+    }
+
+    @ViewBuilder
+    private func pageItems(
+        paper: PaperSize,
+        scaledW: CGFloat,
+        scaledH: CGFloat
+    ) -> some View {
+        ForEach(pages, id: \.id) { page in
+            ContinuousNativePageHost(
+                page: page,
+                store: store,
+                zoomPrototype: zoomPrototype,
+                diagnostics: diagnostics
+            )
+            .frame(width: paper.width, height: paper.height)
+            .scaleEffect(fitScale)
+            .frame(width: scaledW, height: scaledH)
+            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 0)
+            .id(page.id)
+        }
     }
 }
 
@@ -784,10 +819,14 @@ private final class ContinuousNativeScrollController: UIViewController,
                                                       UIGestureRecognizerDelegate {
     private let scrollView = UIScrollView()
     private let host: UIHostingController<ContinuousNativePageStack>
+    private var hostWidthMatchesViewportConstraint: NSLayoutConstraint?
+    private var hostHeightMatchesViewportConstraint: NSLayoutConstraint?
+    private var hostWidthConstraint: NSLayoutConstraint?
     private var hostHeightConstraint: NSLayoutConstraint?
 
     private var pageIDs: [UUID] = []
-    private var pageHeight: CGFloat = 0
+    private var flowAxis: PageFlowAxis
+    private var pagePrimaryExtent: CGFloat = 0
     private var gapPt: CGFloat = 0
     private var restorePageIndex: Int = 0
     private var resetToken: Int = 0
@@ -827,12 +866,14 @@ private final class ContinuousNativeScrollController: UIViewController,
     private let zoomPrototype: ContinuousNativeZoomPrototype
 
     init(content: ContinuousNativePageStack,
+         flowAxis: PageFlowAxis,
          diagnostics: ContinuousNativeSessionDiagnostics,
          zoomPrototype: ContinuousNativeZoomPrototype,
          onZoomChange: ((CGFloat) -> Void)?,
          onZoomResetRequested: (() -> Void)?,
          onZoomResetCompleted: (() -> Void)?) {
         host = UIHostingController(rootView: content)
+        self.flowAxis = flowAxis
         self.diagnostics = diagnostics
         self.zoomPrototype = zoomPrototype
         self.onZoomChange = onZoomChange
@@ -849,8 +890,7 @@ private final class ContinuousNativeScrollController: UIViewController,
 
         view.backgroundColor = .systemGroupedBackground
         scrollView.backgroundColor = .systemGroupedBackground
-        scrollView.alwaysBounceVertical = true
-        scrollView.alwaysBounceHorizontal = false
+        applyScrollAxis()
         scrollView.showsVerticalScrollIndicator = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.contentInsetAdjustmentBehavior = .never
@@ -913,7 +953,15 @@ private final class ContinuousNativeScrollController: UIViewController,
         scrollView.addSubview(host.view)
         host.didMove(toParent: self)
 
+        let hostWidthMatchesViewportConstraint =
+            host.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        let hostHeightMatchesViewportConstraint =
+            host.view.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor)
+        let hostWidthConstraint = host.view.widthAnchor.constraint(equalToConstant: 0)
         let hostHeightConstraint = host.view.heightAnchor.constraint(equalToConstant: 0)
+        self.hostWidthMatchesViewportConstraint = hostWidthMatchesViewportConstraint
+        self.hostHeightMatchesViewportConstraint = hostHeightMatchesViewportConstraint
+        self.hostWidthConstraint = hostWidthConstraint
         self.hostHeightConstraint = hostHeightConstraint
 
         NSLayoutConstraint.activate([
@@ -926,13 +974,12 @@ private final class ContinuousNativeScrollController: UIViewController,
             host.view.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
             host.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             host.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            host.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
-            hostHeightConstraint
         ])
+        applyHostAxisConstraints()
 
         #if DEBUG
         if zoomPrototype == .stack {
-            print("[CONT-STACK] outer zoom owner prepared scale=1.0 pinchEnabled=true")
+            print("[CONT-STACK] outer zoom owner prepared scale=1.0 pinchEnabled=true flowAxis=\(flowAxis.debugName)")
         }
         #endif
     }
@@ -1176,18 +1223,26 @@ private final class ContinuousNativeScrollController: UIViewController,
     }
 
     func configure(pageIDs: [UUID],
-                   pageHeight: CGFloat,
+                   flowAxis: PageFlowAxis,
+                   pagePrimaryExtent: CGFloat,
                    gapPt: CGFloat,
                    restorePageIndex: Int,
                    resetToken: Int,
                    onCurrentPageChange: @escaping (ContinuousNativePageReport) -> Void) {
+        if self.flowAxis != flowAxis {
+            self.flowAxis = flowAxis
+            stackDisplayedPageIndex = nil
+            lastReportedIndex = nil
+            applyScrollAxis()
+            applyHostAxisConstraints()
+        }
         self.pageIDs = pageIDs
-        self.pageHeight = pageHeight
+        self.pagePrimaryExtent = pagePrimaryExtent
         self.gapPt = gapPt
         self.restorePageIndex = restorePageIndex
         self.resetToken = resetToken
         self.onCurrentPageChange = onCurrentPageChange
-        updateHostContentHeight()
+        updateHostContentLength()
         handleResetTokenIfNeeded()
     }
 
@@ -1209,7 +1264,7 @@ private final class ContinuousNativeScrollController: UIViewController,
         handledScrollTarget = target
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.updateHostContentHeight()
+            self.updateHostContentLength()
             self.view.layoutIfNeeded()
             self.scrollToPage(index: index, animated: true)
             consumed()
@@ -1228,14 +1283,15 @@ private final class ContinuousNativeScrollController: UIViewController,
     private func reportZoomedDisplayedPage() {
         guard zoomPrototype == .stack,
               !pageIDs.isEmpty,
-              pageHeight > 0,
+              pagePrimaryExtent > 0,
               scrollView.zoomScale > 1.0001 else { return }
 
-        let viewportCenterYInContent =
-            (scrollView.contentOffset.y + scrollView.bounds.height / 2)
+        let viewportCenterInContent =
+            (flowAxis.primaryOffset(of: scrollView.contentOffset)
+             + flowAxis.primaryExtent(of: scrollView.bounds.size) / 2)
             / scrollView.zoomScale
-        let stride = pageHeight + gapPt
-        let raw = (viewportCenterYInContent - gapPt - pageHeight / 2) / stride
+        let stride = pagePrimaryExtent + gapPt
+        let raw = (viewportCenterInContent - gapPt - pagePrimaryExtent / 2) / stride
         let index = max(0, min(pageIDs.count - 1, Int(raw.rounded())))
         guard index != lastReportedIndex else { return }
 
@@ -1249,7 +1305,7 @@ private final class ContinuousNativeScrollController: UIViewController,
             index: index,
             pageID: pageIDs[index],
             rawIndex: raw,
-            contentOffsetY: scrollView.contentOffset.y,
+            contentOffsetY: flowAxis.primaryOffset(of: scrollView.contentOffset),
             isDragging: scrollView.isDragging,
             isDecelerating: scrollView.isDecelerating,
             suppressesActivePromotion: true
@@ -1260,10 +1316,11 @@ private final class ContinuousNativeScrollController: UIViewController,
     }
 
     private func reportCurrentPage(force: Bool = false) {
-        guard !pageIDs.isEmpty, pageHeight > 0 else { return }
-        let viewportCenter = scrollView.contentOffset.y + scrollView.bounds.height / 2
-        let stride = pageHeight + gapPt
-        let raw = (viewportCenter - gapPt - pageHeight / 2) / stride
+        guard !pageIDs.isEmpty, pagePrimaryExtent > 0 else { return }
+        let viewportCenter = flowAxis.primaryOffset(of: scrollView.contentOffset)
+            + flowAxis.primaryExtent(of: scrollView.bounds.size) / 2
+        let stride = pagePrimaryExtent + gapPt
+        let raw = (viewportCenter - gapPt - pagePrimaryExtent / 2) / stride
         let index: Int
         if zoomPrototype == .stack {
             guard let resolved = resolveStackDisplayedPageIndex(for: raw) else {
@@ -1280,7 +1337,7 @@ private final class ContinuousNativeScrollController: UIViewController,
             index: index,
             pageID: pageIDs[index],
             rawIndex: raw,
-            contentOffsetY: scrollView.contentOffset.y,
+            contentOffsetY: flowAxis.primaryOffset(of: scrollView.contentOffset),
             isDragging: scrollView.isDragging,
             isDecelerating: scrollView.isDecelerating,
             suppressesActivePromotion: false
@@ -1354,10 +1411,11 @@ private final class ContinuousNativeScrollController: UIViewController,
     }
 
     private func currentPageIndexForGeometry() -> Int {
-        guard !pageIDs.isEmpty, pageHeight > 0 else { return 0 }
-        let viewportCenter = scrollView.contentOffset.y + scrollView.bounds.height / 2
-        let stride = pageHeight + gapPt
-        let raw = (viewportCenter - gapPt - pageHeight / 2) / stride
+        guard !pageIDs.isEmpty, pagePrimaryExtent > 0 else { return 0 }
+        let viewportCenter = flowAxis.primaryOffset(of: scrollView.contentOffset)
+            + flowAxis.primaryExtent(of: scrollView.bounds.size) / 2
+        let stride = pagePrimaryExtent + gapPt
+        let raw = (viewportCenter - gapPt - pagePrimaryExtent / 2) / stride
         return max(0, min(pageIDs.count - 1, Int(raw.rounded())))
     }
 
@@ -1373,32 +1431,75 @@ private final class ContinuousNativeScrollController: UIViewController,
     }
 
     private func scrollToPage(index: Int, animated: Bool) {
-        guard !pageIDs.isEmpty, pageHeight > 0 else { return }
-        updateHostContentHeight()
+        guard !pageIDs.isEmpty, pagePrimaryExtent > 0 else { return }
+        updateHostContentLength()
         let safeIndex = max(0, min(pageIDs.count - 1, index))
-        let pageCenter = gapPt + CGFloat(safeIndex) * (pageHeight + gapPt)
-            + pageHeight / 2
-        let proposedY = pageCenter - scrollView.bounds.height / 2
-        let maximumY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
-        let targetY = proposedY.clamped(to: 0...maximumY)
-        scrollView.setContentOffset(CGPoint(x: 0, y: targetY), animated: animated)
+        let pageCenter = gapPt + CGFloat(safeIndex) * (pagePrimaryExtent + gapPt)
+            + pagePrimaryExtent / 2
+        let proposedPrimary = pageCenter
+            - flowAxis.primaryExtent(of: scrollView.bounds.size) / 2
+        let maximumPrimary = max(
+            0,
+            flowAxis.primaryContentSize(of: scrollView.contentSize)
+                - flowAxis.primaryExtent(of: scrollView.bounds.size)
+        )
+        let targetPrimary = proposedPrimary.clamped(to: 0...maximumPrimary)
+        scrollView.setContentOffset(
+            flowAxis.contentOffset(primary: targetPrimary),
+            animated: animated
+        )
     }
 
-    private func updateHostContentHeight() {
-        guard pageHeight > 0 else { return }
+    private func updateHostContentLength() {
+        guard pagePrimaryExtent > 0 else { return }
         let pageCount = pageIDs.count
         let totalGap = gapPt * 2 + CGFloat(max(0, pageCount - 1)) * gapPt
-        let contentHeight = CGFloat(pageCount) * pageHeight + totalGap
-        guard hostHeightConstraint?.constant != contentHeight else { return }
-        hostHeightConstraint?.constant = contentHeight
+        let contentLength = CGFloat(pageCount) * pagePrimaryExtent + totalGap
+        let primaryConstraint = primaryLengthConstraint
+        guard primaryConstraint?.constant != contentLength else { return }
+        primaryConstraint?.constant = contentLength
         host.view.invalidateIntrinsicContentSize()
         host.view.setNeedsLayout()
         scrollView.setNeedsLayout()
         view.layoutIfNeeded()
         #if DEBUG
         if zoomPrototype == .stack {
-            print("[CONT-STACK-LAYOUT] pages=\(pageCount) contentHeight=\(String(format: "%.1f", contentHeight)) contentSize=\(String(format: "%.1f", scrollView.contentSize.height))")
+            print("[CONT-STACK-LAYOUT] pages=\(pageCount) flowAxis=\(flowAxis.debugName) contentLength=\(String(format: "%.1f", contentLength)) contentSize=\(String(format: "%.1f", flowAxis.primaryContentSize(of: scrollView.contentSize)))")
         }
         #endif
+    }
+
+    private var primaryLengthConstraint: NSLayoutConstraint? {
+        switch flowAxis {
+        case .vertical: return hostHeightConstraint
+        case .horizontal: return hostWidthConstraint
+        }
+    }
+
+    private func applyScrollAxis() {
+        scrollView.alwaysBounceVertical = flowAxis == .vertical
+        scrollView.alwaysBounceHorizontal = flowAxis == .horizontal
+    }
+
+    private func applyHostAxisConstraints() {
+        NSLayoutConstraint.deactivate([
+            hostWidthMatchesViewportConstraint,
+            hostHeightMatchesViewportConstraint,
+            hostWidthConstraint,
+            hostHeightConstraint
+        ].compactMap { $0 })
+
+        switch flowAxis {
+        case .vertical:
+            NSLayoutConstraint.activate([
+                hostWidthMatchesViewportConstraint,
+                hostHeightConstraint
+            ].compactMap { $0 })
+        case .horizontal:
+            NSLayoutConstraint.activate([
+                hostHeightMatchesViewportConstraint,
+                hostWidthConstraint
+            ].compactMap { $0 })
+        }
     }
 }

@@ -111,7 +111,7 @@ struct SinglePagesView: View, Equatable {
                         page: page,
                         store: store,
                         layoutContext: layoutContext,
-                        swipeAxis: flowAxis.swipeAxis,
+                        swipeAxis: flowAxis.swiftUIAxis,
                         onSwipeForward: handleSwipeForward,
                         onSwipeBackward: handleSwipeBackward,
                         onZoomChange: onZoomChange,
@@ -194,31 +194,6 @@ struct SinglePagesView: View, Equatable {
         guard currentPageIndex > 0 else { return }
         withAnimation(.easeInOut(duration: 0.25)) {
             currentPageIndex -= 1
-        }
-    }
-}
-
-private extension PageFlowAxis {
-    var swipeAxis: Axis {
-        switch self {
-        case .vertical: return .vertical
-        case .horizontal: return .horizontal
-        }
-    }
-
-    func primaryExtent(of size: CGSize) -> CGFloat {
-        switch self {
-        case .vertical: return size.height
-        case .horizontal: return size.width
-        }
-    }
-
-    func pageOffset(delta: CGFloat, stride: CGFloat) -> CGSize {
-        switch self {
-        case .vertical:
-            return CGSize(width: 0, height: delta * stride)
-        case .horizontal:
-            return CGSize(width: delta * stride, height: 0)
         }
     }
 }
