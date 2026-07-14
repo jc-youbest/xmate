@@ -44,7 +44,7 @@ import SwiftUI
 struct ContinuousPagesView: View, Equatable {
 
     let pages: [Page]
-    let paper: PaperSize
+    let layoutContext: EditorLayoutContext
     let store: NoteStore
 
     /// Current page index — updated live from scroll geometry, also written
@@ -105,18 +105,18 @@ struct ContinuousPagesView: View, Equatable {
             && lhs.suppressesViewportTracking == rhs.suppressesViewportTracking
             && lhs.isZoomed == rhs.isZoomed
             && lhs.restorePageIndex == rhs.restorePageIndex
-            && lhs.paper.width == rhs.paper.width
-            && lhs.paper.height == rhs.paper.height
+            && lhs.layoutContext == rhs.layoutContext
     }
 
     // MARK: - Body
 
     var body: some View {
         GeometryReader { proxy in
-            let fitScale = PageGeometry.fitScale(in: proxy.size, for: paper)
+            let paper = layoutContext.paper
+            let fitScale = layoutContext.fitScale(in: proxy.size)
             let scaledW  = paper.width  * fitScale
             let scaledH  = paper.height * fitScale
-            let vertical = paper.isPortrait  // scroll axis
+            let vertical = layoutContext.flowAxis == .vertical
 
             ScrollViewReader { scrollProxy in
                 ScrollView(vertical ? .vertical : .horizontal,
@@ -155,6 +155,7 @@ struct ContinuousPagesView: View, Equatable {
                 // the async fires, onScrollGeometryChange has already set it
                 // to 0 for the initial offset-0 geometry.
                 .onAppear {
+                    logLayoutContext()
                     // Declare the active page for the session manager so the
                     // matching canvas is promoted (flush previous → reload →
                     // first responder → ToolPicker) once it registers. This is
@@ -269,6 +270,7 @@ struct ContinuousPagesView: View, Equatable {
                            fitScale: CGFloat,
                            scaledW: CGFloat,
                            scaledH: CGFloat) -> some View {
+        let paper = layoutContext.paper
         ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
             // Pan goes ONLY to the current page while zoomed, so the single
             // canvas the user writes on is also the one that pans. The bound is
@@ -282,7 +284,7 @@ struct ContinuousPagesView: View, Equatable {
                 zoom.panEnded(velocity: v, halfOverflow: halfOverflow(in: viewport))
             } : nil
 
-            PageSurface {
+            PageSurface(layoutContext: layoutContext) {
                 PencilKitBridge(
                     page: page,
                     store: store,
@@ -315,10 +317,17 @@ struct ContinuousPagesView: View, Equatable {
     /// scaled current page extends past each viewport edge. Read live from
     /// `zoom.userZoom` so it is correct without re-rendering the view.
     private func halfOverflow(in viewport: CGSize) -> CGSize {
-        let fit = PageGeometry.fitScale(in: viewport, for: paper)
+        let paper = layoutContext.paper
+        let fit = layoutContext.fitScale(in: viewport)
         return CGSize(
             width:  max(0, (paper.width  * fit * zoom.userZoom - viewport.width)  / 2),
             height: max(0, (paper.height * fit * zoom.userZoom - viewport.height) / 2)
         )
+    }
+
+    private func logLayoutContext() {
+        #if DEBUG
+        print("[EDITOR-LAYOUT] ContinuousPagesView \(layoutContext.debugDescription)")
+        #endif
     }
 }

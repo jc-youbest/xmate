@@ -1,11 +1,10 @@
 // WritingScreen — Single Page layout
 //
 // One full page fills the viewport at a time. Finger swipes flip discretely
-// between pages along paper.paginationAxis: up/down for portrait paper,
-// left/right for landscape paper (F-051 / F-056 Direction by Paper
-// Orientation). Nothing in this file branches on a paper's name — the flip
-// axis, stride, and swipe directions all derive from the paper's dimensions,
-// so postcard (and any future preset) needs no code change here.
+// between pages along layoutContext.flowAxis: up/down for vertical flow,
+// left/right for horizontal flow. Nothing in this file branches on a paper's
+// name — the flip axis, stride, and swipe directions all derive from the
+// resolved layout context, so future presets need no code change here.
 //
 // PERSISTENT OFFSET CAROUSEL — the stage-4 redesign that removed the flicker.
 //
@@ -17,7 +16,7 @@
 //   Now ALL page canvases live permanently in a ZStack — the same
 //   all-canvases-alive decision ContinuousPagesView already made for the
 //   PKToolPicker (see F-056 "why plain VStack"). Each page is offset along
-//   the pagination axis by (index − currentPageIndex) × stride, where
+//   the flow axis by (index − currentPageIndex) × stride, where
 //   stride = viewport extent + gap, so exactly one page is on-screen.
 //   A page turn just animates currentPageIndex → every offset shifts by one
 //   stride. No canvas is created or destroyed → zero flicker, and the
@@ -34,16 +33,17 @@
 // to its viewport slot, so it never overflows into neighbours or the top bar.
 // Page-turn swipes fire only at fit (suspended once zoomed in).
 //
-// Active-canvas handoff: identical to Continuous — this view declares the
-// desired active page via DrawingSessionManager.setDesiredActive on appear
-// and on every page change; the manager promotes that page's canvas
-// (flush previous → reload → first responder → bind ToolPicker).
+// Active-canvas handoff: this view declares the desired active page via
+// DrawingSessionManager.setDesiredActive on appear and on every page change.
+// The current page is registered visible immediately so ToolPicker ownership
+// can transfer without a nil-anchor gap; Pencil hit testing opens after the
+// short editing-readiness window.
 
 import SwiftUI
 
 struct SinglePagesView: View, Equatable {
     let pages: [Page]
-    let paper: PaperSize
+    let layoutContext: EditorLayoutContext
     let store: NoteStore
 
     @Binding var currentPageIndex: Int
@@ -71,8 +71,7 @@ struct SinglePagesView: View, Equatable {
         lhs.pages.map(\.id) == rhs.pages.map(\.id)
             && lhs.currentPageIndex == rhs.currentPageIndex
             && lhs.resetToken == rhs.resetToken
-            && lhs.paper.width == rhs.paper.width
-            && lhs.paper.height == rhs.paper.height
+            && lhs.layoutContext == rhs.layoutContext
     }
 
     // MARK: - Constants
@@ -86,10 +85,10 @@ struct SinglePagesView: View, Equatable {
 
     var body: some View {
         GeometryReader { proxy in
-            let vertical = (paper.paginationAxis == .vertical)
+            let flowAxis = layoutContext.flowAxis
             // One full viewport per page: the next page sits exactly one
-            // stride away along the pagination axis.
-            let stride = (vertical ? proxy.size.height : proxy.size.width) + gapPt
+            // stride away along the resolved flow axis.
+            let stride = flowAxis.primaryExtent(of: proxy.size) + gapPt
 
             ZStack {
                 // Letterbox fill — matches ContinuousPagesView so both
@@ -99,8 +98,9 @@ struct SinglePagesView: View, Equatable {
 
                 ForEach(Array(pages.enumerated()), id: \.element.id) { index, page in
                     let delta = CGFloat(index - currentPageIndex)
+                    let pageOffset = flowAxis.pageOffset(delta: delta, stride: stride)
                     let isCurrentPage = index == currentPageIndex
-                    let isEditablePage = isCurrentPage && page.id == editablePageID
+                    let isHitTestReadyPage = isCurrentPage && page.id == editablePageID
 
                     // Each page is a UIScrollView-backed zoomable page: it fits
                     // the page to the viewport and owns its own pinch / pan /
@@ -110,20 +110,19 @@ struct SinglePagesView: View, Equatable {
                     ZoomablePage(
                         page: page,
                         store: store,
-                        paper: paper,
-                        swipeAxis: paper.paginationAxis,
+                        layoutContext: layoutContext,
+                        swipeAxis: flowAxis.swiftUIAxis,
                         onSwipeForward: handleSwipeForward,
                         onSwipeBackward: handleSwipeBackward,
                         onZoomChange: onZoomChange,
                         onZoomResetRequested: onZoomResetRequested,
                         onZoomResetCompleted: onZoomResetCompleted,
-                        isCurrentPage: isEditablePage,
+                        isCurrentPage: isCurrentPage,
                         resetToken: resetToken
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)
-                    .offset(x: vertical ? 0 : delta * stride,
-                            y: vertical ? delta * stride : 0)
-                    .allowsHitTesting(isEditablePage)
+                    .offset(x: pageOffset.width, y: pageOffset.height)
+                    .allowsHitTesting(isHitTestReadyPage)
                     .zIndex(isCurrentPage ? 1 : 0)
                 }
             }
@@ -136,6 +135,7 @@ struct SinglePagesView: View, Equatable {
         // the outgoing page, reloads the latest drawing, takes first
         // responder and binds the ToolPicker, in that order.
         .onAppear {
+            logLayoutContext()
             syncDesiredActive()
             armCurrentPageForEditing(delay: 0)
         }
@@ -157,6 +157,12 @@ struct SinglePagesView: View, Equatable {
         DrawingSessionManager.shared.setDesiredActive(pageID: id, role: .single)
     }
 
+    private func logLayoutContext() {
+        #if DEBUG
+        print("[SINGLE-PAGE-LAYOUT] flowAxis=\(layoutContext.flowAxis.debugName)")
+        #endif
+    }
+
     private func armCurrentPageForEditing(delay: TimeInterval) {
         guard !pages.isEmpty, currentPageIndex < pages.count,
               let id = pages[currentPageIndex].id else { return }
@@ -173,9 +179,9 @@ struct SinglePagesView: View, Equatable {
 
     // MARK: - Navigation
     //
-    // Forward = next page (swipe up on portrait paper / swipe left on
-    // landscape paper); backward = previous. The carousel offsets animate;
-    // no canvas is created or destroyed.
+    // Forward = next page (swipe up for vertical flow / swipe left for
+    // horizontal flow); backward = previous. The carousel offsets animate; no
+    // canvas is created or destroyed.
 
     private func handleSwipeForward() {
         guard currentPageIndex < pages.count - 1 else { return }

@@ -5,8 +5,8 @@
 // Drawing policy: .pencilOnly — fingers are reserved for navigation (F-001,
 // F-051). In Single Page mode two UISwipeGestureRecognizers (finger-only) are
 // added to the canvas so SinglePagesView can drive page turns. Their
-// directions derive from swipeAxis (paper.paginationAxis): vertical paper →
-// up/down, horizontal (landscape) paper → left/right. Forward = next page
+// directions derive from swipeAxis: vertical flow →
+// up/down, horizontal flow → left/right. Forward = next page
 // (swipe up / swipe left); backward = previous page (swipe down / right).
 // In Continuous mode enableSwipeNavigation is false and no swipe recognisers
 // are added — they would fight the enclosing ScrollView's pan gesture.
@@ -66,12 +66,12 @@ struct PencilKitBridge: UIViewRepresentable {
     /// enclosing ScrollView's pan gesture.
     var enableSwipeNavigation: Bool = false
 
-    /// Axis the swipe navigation runs along — paper.paginationAxis.
+    /// Axis the swipe navigation runs along.
     /// .vertical → up/down swipes; .horizontal → left/right swipes.
     var swipeAxis: Axis = .vertical
 
-    /// Swipe callbacks (F-051). Forward = next page (swipe up on portrait
-    /// paper, swipe left on landscape paper); backward = previous page.
+    /// Swipe callbacks (F-051). Forward = next page (swipe up on vertical
+    /// flow, swipe left on horizontal flow); backward = previous page.
     /// Pass nil while zoomed (F-053) — pagination is suspended; the
     /// recognisers stay attached but dispatch becomes a no-op.
     var onSwipeForward: (() -> Void)?
@@ -136,8 +136,8 @@ struct PencilKitBridge: UIViewRepresentable {
         }
 
         @objc func handleFingerPan(_ r: UIPanGestureRecognizer) {
-            // translation(in: nil) returns window coordinates, which equal
-            // SwiftUI layout coordinates for a portrait-locked app.
+            // translation(in: nil) returns window coordinates, matching the
+            // SwiftUI viewport coordinates used by the current editor.
             let t = r.translation(in: nil)
             // Perf-probe label distinguishes the two pagination styles.
             let perfLabel = canvas?.role == .continuous ? "pan-cont" : "pan-single"

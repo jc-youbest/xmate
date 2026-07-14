@@ -51,7 +51,7 @@ import os
 /// to read a trace and the bugs it has caught.
 enum EditorTrace {
     #if DEBUG
-    static var isEnabled = true  // TEMP: revert to false after the F-059 perf measurement
+    static var isEnabled = false
     private static let logger = Logger(subsystem: "com.cwc.xmate",
                                        category: "EditorLifecycle")
     static func event(_ message: @autoclosure () -> String) {
@@ -210,7 +210,7 @@ final class DrawingSessionManager {
            let wantRole = desiredActiveRole,
            wantPage == canvas.pageID,
            wantRole == canvas.role,
-           activeByPage[canvas.pageID] != ObjectIdentifier(canvas) {
+           needsPromotion(canvas, pageID: canvas.pageID) {
             // Promote this freshly-registered canvas even if another canvas
             // (the outgoing mode's, same page) is still active — makeActive
             // flushes and demotes it first.
@@ -257,7 +257,7 @@ final class DrawingSessionManager {
         for reg in regs.values
         where reg.pageID == pageID && reg.role == role && reg.isVisible {
             guard let c = reg.canvas else { continue }
-            if activeByPage[pageID] != ObjectIdentifier(c) {
+            if needsPromotion(c, pageID: pageID) {
                 EditorTrace.event("setDesiredActive→promote page=\(pageID.uuidString.prefix(4))")
                 makeActive(c)
             }
@@ -276,6 +276,7 @@ final class DrawingSessionManager {
         let id = ObjectIdentifier(canvas)
         guard let reg = regs[id], reg.isVisible else { return }
         let pid = reg.pageID
+        let previousAnchor = anchor
 
         // 1. Flush + demote any other active canvas of the same page.
         if let prevID = activeByPage[pid], prevID != id, let prev = regs[prevID] {
@@ -283,6 +284,10 @@ final class DrawingSessionManager {
             prev.isActive = false
         }
         activeByPage[pid] = nil
+
+        if previousAnchor !== canvas {
+            logToolPickerHandoff(from: previousAnchor, to: canvas, phase: "begin")
+        }
 
         // 2. Reload from canonical store (post-flush, so it's the latest).
         reload(reg)
@@ -292,10 +297,21 @@ final class DrawingSessionManager {
         activeByPage[pid] = id
         anchor = canvas
         ToolPickerHost.shared.setActiveCanvas(canvas)
+        if previousAnchor !== canvas {
+            logToolPickerHandoff(
+                from: previousAnchor,
+                to: canvas,
+                phase: "boundIncoming",
+                pickerVisible: ToolPickerHost.shared.isPickerVisible
+            )
+        }
 
         // 4. Take first responder (idempotent w.r.t. the FR override below).
         let became = canvas.becomeFirstResponder()
         EditorTrace.event("makeActive page=\(pid.uuidString.prefix(4)) role=\(reg.role) becameFR=\(became) isFR=\(canvas.isFirstResponder) inWindow=\(canvas.window != nil) keyWin=\(canvas.window?.isKeyWindow ?? false)")
+        if previousAnchor !== canvas {
+            logToolPickerHandoff(from: previousAnchor, to: canvas, phase: "complete")
+        }
     }
 
     // MARK: - First-responder notifications (from XmateCanvasView)
@@ -439,5 +455,25 @@ final class DrawingSessionManager {
         for id in activeByPage.values {
             if let reg = regs[id] { flush(reg, sync: true) }
         }
+    }
+
+    private func needsPromotion(_ canvas: XmateCanvasView, pageID: UUID) -> Bool {
+        activeByPage[pageID] != ObjectIdentifier(canvas) || anchor !== canvas
+    }
+
+    private func logToolPickerHandoff(
+        from: XmateCanvasView?,
+        to: XmateCanvasView,
+        phase: String,
+        pickerVisible: Bool? = nil
+    ) {
+        let fromID = shortPageID(from?.pageID)
+        let toID = shortPageID(to.pageID)
+        let visible = pickerVisible.map { " pickerVisible=\($0)" } ?? ""
+        EditorTrace.event("[TOOLPICKER-HANDOFF] from=\(fromID) to=\(toID) phase=\(phase)\(visible)")
+    }
+
+    private func shortPageID(_ id: UUID?) -> String {
+        id.map { String($0.uuidString.prefix(4)) } ?? "nil"
     }
 }

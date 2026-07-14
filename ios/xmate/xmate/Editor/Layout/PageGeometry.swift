@@ -14,11 +14,11 @@
 //
 // Architecturally there is no "content type" enum — letter, postcard,
 // and any future paper kind are all values of the same `PaperSize`
-// struct. Orientation lock, pagination scroll axis, and aspect ratio
-// are all derived from the paper's dimensions, never branched on a
-// name. Named presets (PaperPreset.letter, PaperPreset.postcard, …)
-// live as static data so adding a new paper kind requires only one
-// new entry in the preset catalogue.
+// struct. Aspect ratio and legacy pagination axis are derived from the
+// paper's dimensions, never branched on a name. Named presets
+// (PaperPreset.letter, PaperPreset.postcard, …) live as static data so
+// adding a new paper kind requires only one new entry in the preset
+// catalogue.
 //
 // v2 layout migration note: PageSpec / PageSize / LayoutPolicy are being wired
 // in incrementally. This file remains the compatibility bridge so existing
@@ -49,14 +49,14 @@ struct PaperSize: Hashable {
     /// width / height.
     var aspectRatio: CGFloat { width / height }
 
-    /// The orientation the Content Screen locks to when this paper is
-    /// displayed. Derived from paper dimensions, not from a name.
+    /// Preferred orientation implied by the paper shape. This is not currently
+    /// consumed by the app target or any scene/window orientation API.
     var orientationLock: UIInterfaceOrientationMask {
         isPortrait ? .portrait : .landscape
     }
 
-    /// The axis along which Continuous Pagination Style scrolls (F-056).
-    /// Portrait paper → vertical scroll; landscape paper → horizontal.
+    /// Legacy axis derived from paper shape. New editor layout code should use
+    /// EditorLayoutContext.flowAxis when it needs resolved flow semantics.
     var paginationAxis: Axis {
         isPortrait ? .vertical : .horizontal
     }

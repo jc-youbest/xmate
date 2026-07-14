@@ -15,6 +15,11 @@ struct PageSize: Hashable {
     /// Current xmate writing page: A4 portrait in PDF-standard points.
     /// 8.27 x 11.69 in at 72 dpi = 595 x 842 pt.
     static let a4Portrait = PageSize(width: 595, height: 842)
+    static let a4Landscape = PageSize(width: 842, height: 595)
+
+    /// 4 x 6 inch postcard scaled x2 for stroke-precision parity with A4.
+    static let postcardPortrait = PageSize(width: 576, height: 864)
+    static let postcardLandscape = PageSize(width: 864, height: 576)
 
     var orientation: PageOrientation {
         if height > width { return .portrait }

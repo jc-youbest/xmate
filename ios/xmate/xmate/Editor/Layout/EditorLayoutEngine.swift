@@ -30,6 +30,20 @@ struct EditorLayoutResult: Equatable {
 
 enum EditorLayoutEngine {
     static func layout(
+        context: EditorLayoutContext,
+        viewportSize: CGSize,
+        pageCount: Int
+    ) -> EditorLayoutResult {
+        layout(
+            pageSpec: context.pageSpec,
+            layoutPolicy: context.layoutPolicy,
+            viewportSize: viewportSize,
+            pageCount: pageCount,
+            presentationStyle: context.presentationStyle
+        )
+    }
+
+    static func layout(
         pageSpec: PageSpec,
         layoutPolicy: LayoutPolicy,
         viewportSize: CGSize,
@@ -219,4 +233,3 @@ enum CurrentPageResolver {
         }
     }
 }
-

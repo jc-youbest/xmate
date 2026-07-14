@@ -4,9 +4,11 @@
 
 - Core Data stack (store file in `Library/Application Support/`,
   app-private).
-- Entities: Document (id, title, timestamps, ordered pages), Page (id,
-  drawingData blob, version).
-- Document lookup/creation (`loadOrCreateDocument(named:)`), page
+- Entities: Document (id, title, timestamps, ordered pages, document-level
+  page preset id and logical page dimensions), Page (id, drawingData blob,
+  version).
+- Document lookup/creation (`loadOrCreateDocument(named:)`, plus a typed
+  preset creation path for App-owned document selection), page
   add/delete/reset, and drawing load/save:
   - async debounced save path for while-writing saves;
   - sync flush path for handoffs and `willResignActive`;
@@ -28,9 +30,8 @@
 
 ## Next step (current stage)
 
-- Per-document paper columns (width/height) + lightweight migration —
-  unblocks the postcard preset. Later: stationery entities, sync hooks
-  (custom backend, not CloudKit).
+- Later: stationery entities, sync hooks (custom backend, not CloudKit),
+  and Library/new-document UI that calls the typed preset creation path.
 
 ## Notes for AI changes
 

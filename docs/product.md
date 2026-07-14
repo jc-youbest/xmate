@@ -33,14 +33,16 @@ The Content Screen offers two equal **Pagination Styles** (global user
 preference, applied immediately — never called a "mode"):
 
 - **Single Page** — one full page at a time; finger swipes flip
-  discretely. Direction derives from paper orientation (portrait paper →
-  vertical, landscape → horizontal). Default.
+  discretely. Direction derives from the document's resolved page-flow
+  axis. Default.
 - **Continuous** — pages stack and scroll continuously along the same
   axis.
 
-Device orientation never rotates the in-content UI: portrait paper locks
-the Content Screen to portrait, landscape paper to landscape; the user
-rotates the iPad to match. Revisited in v5.
+Device/window orientation is separate from paper orientation. The editor
+fits the fixed logical page into whatever iPad viewport it receives; a
+future full-screen implementation may request a preferred orientation for
+landscape stationery, but resizable iPad windows must still adapt.
+Revisited in v5.
 
 ## Terminology (essentials)
 

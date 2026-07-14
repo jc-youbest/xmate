@@ -121,6 +121,10 @@ final class ToolPickerHost: NSObject, PKToolPickerObserver {
         picker.addObserver(self)
     }
 
+    var isPickerVisible: Bool {
+        picker.isVisible
+    }
+
     /// Start observing a canvas so the picker can show its tools when this
     /// canvas (later) becomes the active first responder. Does NOT make the
     /// picker visible — that only happens via `setActiveCanvas`. Stamps the
@@ -146,6 +150,7 @@ final class ToolPickerHost: NSObject, PKToolPickerObserver {
         canvas.tool = picker.selectedTool
         EditorTrace.event("setVisible(true) page=\(canvas.pageID?.uuidString.prefix(4) ?? "----") isFR(before)=\(canvas.isFirstResponder)")
         picker.setVisible(true, forFirstResponder: canvas)
+        EditorTrace.event("setVisible(true) page=\(canvas.pageID?.uuidString.prefix(4) ?? "----") isFR(after)=\(canvas.isFirstResponder) pickerVisible=\(picker.isVisible)")
     }
 
     // MARK: PKToolPickerObserver — explicit tool push

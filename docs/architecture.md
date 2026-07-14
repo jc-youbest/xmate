@@ -58,31 +58,207 @@ The editor never decides which document it shows.
 
 - v1: `RootView` resolves a hard-coded dev document name through
   `NoteStore.loadOrCreateDocument(named:)` and injects the `Document`.
+  DEBUG builds can opt into a separate named dev document for one preset
+  via `DevDocumentPagePresetProbe`; this exercises the same persisted
+  document PageSpec path without adding user-facing preset UI or mutating
+  the default A4 portrait dev document.
 - Future sources — inbox (social), drafts/list (Library), new creation —
   all resolve a `Document` outside the editor and inject it the same way.
 
 ## Paper model
 
 A document is written on a paper with fixed logical dimensions in points
-(Letter 595×842 portrait; Postcard 864×576 landscape). Everything
-mechanical — orientation lock, pagination axis, swipe directions, scroll
-axis, fit scale — derives from `paper.width` / `paper.height`. **No code
-branches on a paper's name.** New presets are catalogue entries only.
-Logical page size never changes with device; every iPad scales the page
-uniformly to fit, and handwriting never reflows.
+(A4 595×842 portrait by default; other presets include A4 landscape and
+postcard portrait/landscape). Page shape, aspect ratio, fit scale, and
+default flow-axis choices derive from page-spec data, not a paper name.
+**No code branches on a paper's name.** New presets are catalogue entries
+only. Logical page size never changes with device; every iPad scales the
+page uniformly to fit, and handwriting never reflows.
 
-Current stage limitation: the document page spec is still fixed to A4
-portrait, but the data now flows through `PageSpec` / `PageSize` /
-`LayoutPolicy` and is adapted by `PageGeometry` back into the existing
-`PaperSize` runtime path. Per-document paper still waits for the Core
-Data migration.
+Current stage: the document page spec is stored on `Document` as a preset
+id plus logical page width/height. `PagePresetCatalog` carries A4
+portrait, A4 landscape, postcard portrait, and postcard landscape as data
+entries; new documents persist A4 portrait by default. The data flows
+through `PageSpec` / `PageSize` / `LayoutPolicy` and is adapted by
+`PageGeometry` back into the existing `PaperSize` runtime path.
 
-`EditorLayoutEngine` is the future pure layout source. It takes
-`PageSpec`, `LayoutPolicy`, viewport size, page count, and presentation
-style, then returns page frames, content size, fit scale, gap, flow axis,
-and presentation style. Current runtime views still use their existing
-layout code through the `PageGeometry` compatibility bridge; the engine is
-being introduced before it becomes authoritative.
+Layout resolution is explicit and small: `EditorConfiguration` resolves
+the active `LayoutPolicy` from the selected `PageSpec` and current
+presentation style. That makes the effective flow axis come from
+`PageSpec.flowAxis` while preserving the existing runtime bridge. The
+current default resolves to A4 portrait, vertical flow, and whichever
+Single Page / Continuous presentation the existing settings choose.
+`EditorLayoutContext` is the value passed through WritingScreen and the
+editor view hierarchy for that resolved layout. It carries the page spec,
+page size/orientation, flow axis, presentation style, resolved policy, and
+the current bridged `PaperSize`; it is not observable state and does not
+select presets.
+
+Current persisted model: Core Data model version `xmate 2.xcdatamodel`
+adds `Document.pagePresetID`, `Document.logicalPageWidth`, and
+`Document.logicalPageHeight`. `Page` still stores only `id`,
+`drawingData`, `version`, and its inverse `document` relationship. Flow
+axis is not persisted; it is reconstructed from the resolved page spec and
+layout policy. Legacy v1 documents may have nil or zero page-spec fields,
+so `Document.resolvedPageSpec` computes a safe A4 portrait fallback without
+rewriting drawing blobs or treating migration normalization as a document
+edit. New documents persist the A4 portrait preset id and dimensions once
+at creation. `NoteStore` also exposes a typed preset creation path for the
+App layer; the preset is applied only when creating a new named document,
+while existing documents keep their persisted page spec.
+
+Opening a document is stricter than resolving a fallback. Storage may still
+compute safe fallback values for old or partial records, but the App layer must
+validate the raw persisted document preset before the editor is created. The
+current open policy accepts only `a4-portrait`, `a4-landscape`, and
+`postcard-landscape`; catalogue entries that are not in that allow-list remain
+data-only until their editor behavior is intentionally enabled. A valid open
+also requires the stored logical width/height to match the selected preset.
+Once validation passes, `Document.pagePresetID` is the preset source for
+editor layout and for the App-layer window orientation policy. DEBUG creation
+probes may choose which persisted dev document to create, but they are not a
+runtime layout source after the document has loaded.
+
+Future ownership decision: page specification belongs to the `Document`,
+not each `Page` and not `SettingsStore`. xmate documents are ordered
+stationery sheets of one paper kind; a mid-document paper change would
+make page-turning, generation, sharing, and print/export semantics
+ambiguous. `SettingsStore` may own the global presentation preference
+(`singlePage` / `continuous`) but not document paper semantics.
+`LayoutPolicy` combines the document's page spec with presentation style
+and runtime environment, and `EditorLayoutContext` is the value SwiftUI
+views consume.
+
+Core Data migration stores document-level page-spec fields only:
+`pagePresetID: String?`, `logicalPageWidth: Double`, and
+`logicalPageHeight: Double`. `PageSpec.flowAxis` remains runtime layout
+policy, not a persisted field in this increment; it is reconstructed from
+the resolved preset or from dimensions when building the runtime
+`PageSpec`. Existing stores lightweight-migrate with nil or zero added
+fields, then compute an A4 portrait fallback at read time. Do not rewrite
+`Page.drawingData` during migration or fallback resolution.
+
+PKDrawing persistence: each page's `drawingData` is
+`PKDrawing.dataRepresentation()` captured from a canvas whose bounds are
+the current logical page size. PKDrawing stores absolute drawing geometry
+in that logical coordinate space. Reopening the same document with a
+different runtime `PageSpec` does not reflow or normalize strokes: the
+stored coordinates remain absolute. A larger page can make strokes occupy
+a smaller relative area; a smaller or differently shaped page can crop
+content outside the new bounds. This is why existing documents must
+migrate to A4 portrait semantics before user-selectable presets land.
+
+Document-semantic data and runtime presentation data are separate:
+document paper width/height/preset identify the stationery being edited;
+presentation style selects Single Page or Continuous; page flow describes
+how pages are arranged in the editor; viewport size/orientation is the
+actual SwiftUI/window geometry available at runtime; preferred interface
+orientation is an optional app/window request, not page identity.
+
+`EditorLayoutEngine` is the future pure layout source. It can take an
+`EditorLayoutContext` plus viewport size and page count, then returns page
+frames, content size, fit scale, gap, flow axis, and presentation style.
+Current runtime views still use their existing layout code through the
+`PageGeometry` compatibility bridge; the engine is being introduced before
+it becomes authoritative.
+
+## Orientation and adaptive layout contract
+
+The app target currently generates its Info.plist from build settings.
+For iPad (`TARGETED_DEVICE_FAMILY = 2`), both Debug and Release declare
+portrait and landscape interface orientations. The iPhone orientation keys
+are irrelevant because the target is iPad-only. There is no `UIDevice`
+orientation forcing.
+
+`RootView` derives an `EditorWindowOrientationPolicy` from the validated
+document preset before the editor is loaded. That policy is written to the
+App-layer `EditorWindowOrientationPolicyStore`, which is also the source used
+by `UIApplicationDelegate.application(_:supportedInterfaceOrientationsFor:)`.
+`WindowOrientationPolicyBridge` then calls `UIWindowScene.requestGeometryUpdate`
+for the current window scene as a best-effort rotation request. This keeps the
+editor's document model clean: `PageSpec` remains paper semantics, while the
+App layer owns the supported/preferred window orientation when the opened
+document is portrait or landscape. iPadOS may still reject a programmatic
+rotation request in Split View, Stage Manager, or other resizable-window
+scenarios, so views must always adapt to the actual viewport.
+
+Before injecting a document into `WritingScreen`, `RootView` runs
+`DocumentOpenValidator`. Open-time document failures are App-layer errors
+with stable codes, not editor states. `XMATE-DOC-0001` means invalid
+document orientation; `XMATE-DOC-0002` means invalid document preset;
+`XMATE-DOC-0003` means the stored logical page size does not match the
+document preset. The current validator treats square page orientation as
+invalid. On validation failure, RootView presents the error and does not load
+the editor or install the window-orientation bridge.
+
+Page orientation and window orientation are different contracts. Page
+orientation is stable document content semantics. Window orientation is
+the current container supplied by iPadOS: full-screen, Split View, Stage
+Manager, resizable windows, and future external displays can all provide
+viewports whose aspect ratio does not match the document's paper. The
+editor must therefore always adapt layout to the actual viewport size.
+When full-screen and supported by the target, the app may also request a
+preferred interface orientation matching the document's page orientation,
+but that request is only a preference and cannot replace responsive
+layout.
+
+Recommended runtime contract:
+`PageSpec` describes document paper semantics; `LayoutPolicy` combines the
+page spec, presentation style, preferred flow, and environment rules;
+`EditorLayoutContext` carries the resolved value for SwiftUI; the actual
+viewport size is always authoritative for fit scale and chrome placement;
+WritingTopBar chooses a compact/regular/landscape-aware layout from the
+viewport and context, not from a preset name. Future full-screen iPad
+support can use both strategies: request landscape when a landscape
+document opens and the app is full-screen, while still adapting correctly
+when iPadOS gives the app a portrait, split, Stage Manager, or external
+display window.
+
+The orientation bridge is intentionally centralized at the App layer.
+Document page orientation may influence the preferred window orientation,
+but WritingTopBar, page presentation views, zoom views, and PencilKit
+canvases must not make independent interface-orientation requests. They
+all consume the same `EditorLayoutContext` and the same SwiftUI viewport
+supplied by the window. This prevents conflicting states such as a
+landscape canvas inside portrait chrome, or a horizontal page flow inside
+an independently portrait top bar. Page-specific components may adapt
+their layout from abstract values such as `PageFlowAxis`, presentation
+style, page size, and viewport dimensions, but the app/window orientation
+policy has one owner: `RootView` through `EditorWindowOrientationPolicy`.
+
+Landscape support was able to reuse the existing portrait editor behavior
+because the core responsibilities are separated. `PageSpec` and
+`PageSize` describe paper identity; `LayoutPolicy` resolves presentation
+style and flow axis; `EditorLayoutContext` passes that resolved value
+through the view hierarchy; `PageGeometry` bridges the new model into the
+older runtime layout path; and `EditorOperationStateMachine` sequences
+operations such as reset-before-add-page independently of page shape or
+flow direction. As a result, landscape Single Page and Continuous flows
+reuse the same PencilKit canvas ownership, zoom/pan behavior, double-tap
+reset, ToolPicker handling, and add-page transaction ordering that were
+stabilized for A4 portrait. New page presets should therefore enter the
+system as data and policy inputs, not as preset-name branches in layout
+consumers.
+
+There are three separate orientation concepts:
+
+- Page orientation: stable document semantics derived from the page spec,
+  such as A4 portrait or A4 landscape.
+- Window/app orientation: the current interface orientation of the iPadOS
+  window that contains the editor.
+- Device orientation: how the user is physically holding the iPad.
+
+The app may request a window orientation that matches the document page
+orientation, but iPadOS remains authoritative. `requestGeometryUpdate` can
+fail in some windowing modes, including Split View, Stage Manager, or other
+resizable-window configurations. That failure does not mean layout is
+invalid; it only means the system declined a programmatic rotation request.
+When the target declares both portrait and landscape support, iPadOS may
+still rotate the app later in response to device orientation or windowing
+mode changes. The editor must handle both outcomes: use the document's
+page orientation to resolve paper and preferred flow, and use the actual
+window viewport to size and place WritingTopBar, pages, zoom surfaces, and
+canvas content.
 
 `EditorCommand` / `ViewportCommand` / `DrawingCommand` are inert command
 values that describe future editor transactions such as scroll-to-page,
@@ -197,9 +373,13 @@ Persistent-offset carousel (SinglePagesView). A page turn animates
 canvas is created or destroyed (principle 3) — the flip is flicker-free
 and the departing page needs no emergency flush (it stays alive;
 DrawingSessionManager hands the active-editor role over explicitly).
-Swipe axis derives from paper orientation (portrait → vertical,
-landscape → horizontal). *Rejected:* rebuilding the page view per turn
-(flicker).
+Swipe axis, stride extent, and page offsets derive from
+`EditorLayoutContext.flowAxis`: vertical flow uses up/down swipes and
+Y offsets; horizontal flow uses left/right swipes and X offsets. The
+current default A4 portrait context resolves to vertical flow, so legacy
+Single Page behavior stays unchanged. *Rejected:* rebuilding the page
+view per turn (flicker); branching on preset names such as A4 landscape
+or postcard.
 
 ### Continuous paging
 
@@ -211,6 +391,15 @@ steady page); Reading Mode (later) scrolls freely with two adjacent
 pages partly visible. Programmatic moves use a one-way `scrollTarget`
 UUID signal. *Rejected:* `LazyVStack` (tool picker breaks);
 `.scrollPosition(id:)` two-way binding (snap loop — principle 6).
+
+Continuous page flow is axis-aware through `EditorLayoutContext.flowAxis`.
+Vertical flow stacks pages top-to-bottom and tracks the viewport center along
+Y; horizontal flow stacks pages left-to-right and tracks along X. The runtime
+does not branch on preset names such as A4 landscape or postcard landscape.
+Both the legacy SwiftUI Continuous path and the native Continuous stack path
+derive their scroll axis from the resolved layout context, so A4 portrait keeps
+the same vertical behavior while landscape presets can move through the same
+layout policy path as Single Page.
 
 ### Zoom
 
@@ -326,29 +515,37 @@ will bound each zoom session to the page group visible when the pinch begins;
 whole-document free zoom is not the product model. Keep this as a sibling path
 behind a feature flag until device acceptance.
 
-The native stack controller owns an explicit height constraint for the hosted
-SwiftUI page stack: top/bottom padding, page count, page height, and inter-page
-gaps determine `UIScrollView.contentSize`. Do not rely only on
-`UIHostingController` intrinsic-size invalidation after page mutation; device
-testing showed Add Page could update the SwiftUI page array and top-bar count
-while the scroll view still clamped programmatic scroll to the old content
-height. Native stack zoom-display reports are also deferred to the next main
-queue turn before they update `WritingScreen` state; `UIScrollViewDelegate`
-zoom callbacks can occur during representable update/layout, and synchronously
-publishing SwiftUI state from that path produces undefined-behavior warnings.
+The native stack controller owns an explicit primary-axis content-length
+constraint for the hosted SwiftUI page stack. In vertical flow, the host width
+matches the viewport and the explicit length is height; in horizontal flow,
+the host height matches the viewport and the explicit length is width. Padding,
+page count, scaled page primary extent, and inter-page gaps determine
+`UIScrollView.contentSize`. Do not rely only on `UIHostingController`
+intrinsic-size invalidation after page mutation; device testing showed Add Page
+could update the SwiftUI page array and top-bar count while the scroll view
+still clamped programmatic scroll to the old content length. Native stack
+zoom-display reports are also deferred to the next main queue turn before they
+update `WritingScreen` state; `UIScrollViewDelegate` zoom callbacks can occur
+during representable update/layout, and synchronously publishing SwiftUI state
+from that path produces undefined-behavior warnings.
 Single Page uses the same rule for its per-page zoom scroll views. A shared
 reset token reaches every hosted page, but only the page that actually performs
 a zoom reset reports completion; fit-state pages do not claim completion for a
 structural-operation precondition they did not satisfy.
 Single Page still keeps every page canvas mounted to avoid page-turn flicker,
 but DrawingSessionManager visibility is narrower than SwiftUI lifetime: only
-the current page index is registered as visible and hit-testable. Off-screen
-pages remain warm but cannot become the ToolPicker anchor or receive Pencil
-input during add-page restore/page-turn churn. After a Single Page index/page
-list change, Pencil hit testing is held closed for one short activation window;
-then the current page is re-registered visible and re-declared desired active.
-This prevents a very fast first stroke after zoomed Add Page from landing
-before the new page's PencilKit/ToolPicker handoff has stabilized.
+the current page index is registered as visible for ToolPicker/active-canvas
+handoff. Off-screen pages remain warm but cannot become the ToolPicker anchor.
+Pencil hit testing is a separate readiness gate: after a Single Page
+index/page-list change, hit testing is held closed for one short activation
+window, then the current page is re-declared desired active. This keeps
+ToolPicker ownership continuous during page turns while still preventing a
+very fast first stroke after zoomed Add Page from landing before the new
+page's handoff has stabilized.
+Returning to a warm page still re-promotes its canvas if it is not the
+current ToolPicker anchor, even when that page already has the same
+authoritative canvas in `activeByPage`; otherwise backward paging falls
+through to first-responder recovery and creates a visible picker gap.
 
 *Rejected as the final Continuous design:* persistent inner zoom scroll views
 per page. Device testing proved that path smooth, but when the viewport showed

@@ -16,7 +16,7 @@
 //   .singlePage  → SinglePagesView: persistent offset carousel — all page
 //                  canvases stay alive; a flip animates offsets only (no
 //                  canvas destruction → no flicker). Flip axis derives from
-//                  paper.paginationAxis.
+//                  EditorLayoutContext.flowAxis.
 //   .continuous  → ContinuousPagesView: free-scroll stack along
 //                  paper.paginationAxis with 20 pt gaps and geometric
 //                  current-page detection.
@@ -56,12 +56,22 @@
 // Delete document (v1 stub): resets to a single blank page. F-011 will
 // replace this with navigation to NoteListScreen in v3.
 //
-// Paper: still fixed to the current document PageSpec (A4 portrait, vertical)
-// until the per-document Core Data migration lands. The spec is adapted through
-// PageGeometry into the existing PaperSize runtime type so the current views
-// keep their behavior exactly.
+// Paper: resolved from the injected Document's page spec. Legacy documents with
+// no stored page spec compute a safe A4 portrait fallback. The spec is adapted
+// through PageGeometry into the existing PaperSize runtime type so the current
+// views keep their behavior exactly.
 
 import SwiftUI
+
+#if DEBUG
+/// Local-only manual layout probe. Keep nil for normal development; set to a
+/// PagePresetCatalog spec such as `PagePresetCatalog.a4Landscape` to exercise
+/// layout without writing Core Data. Prefer RootView's DevDocumentPagePresetProbe
+/// when the persisted document PageSpec path is what needs testing.
+//private let debugEditorPageSpecOverride: PageSpec? = PagePresetCatalog.a4Landscape
+private let debugEditorPageSpecOverride: PageSpec? = nil
+
+#endif
 
 struct WritingScreen: View {
     @EnvironmentObject var store: NoteStore
@@ -71,16 +81,33 @@ struct WritingScreen: View {
     /// (AppRoot). See file header.
     let document: Document
 
-    /// Stage limitation: per-document paper lands with the Core Data migration.
-    /// The new v2 model now owns the current A4 portrait data, but existing
-    /// viewport code still consumes PaperSize through PageGeometry's bridge.
+    /// Base editor configuration. The document supplies the page spec at render
+    /// time; existing viewport code still consumes PaperSize through
+    /// PageGeometry's bridge.
     private let editorConfiguration = EditorConfiguration.currentDefault
 
-    private var paper: PaperSize {
-        PageGeometry.paperSize(
-            for: editorConfiguration.pageSpec,
-            layoutPolicy: editorConfiguration.layoutPolicy
+    private var resolvedPresentationStyle: PagePresentationStyle {
+        PagePresentationStyle(settings.paginationStyle)
+    }
+
+    private var resolvedLayoutContext: EditorLayoutContext {
+        EditorLayoutContext(
+            configuration: resolvedEditorConfiguration,
+            presentationStyle: resolvedPresentationStyle
         )
+    }
+
+    private var resolvedEditorConfiguration: EditorConfiguration {
+        var configuration = editorConfiguration
+        #if DEBUG
+        if let pageSpec = debugEditorPageSpecOverride {
+            configuration.pageSpec = pageSpec
+            return configuration
+        }
+        #endif
+
+        configuration.pageSpec = document.resolvedPageSpec
+        return configuration
     }
 
     // MARK: - State
@@ -111,6 +138,8 @@ struct WritingScreen: View {
     // MARK: - Body
 
     var body: some View {
+        let layoutContext = resolvedLayoutContext
+
         VStack(spacing: 0) {
 
             // Build the top bar AND the pagination view only once pages are
@@ -127,6 +156,7 @@ struct WritingScreen: View {
                 WritingTopBar(
                     currentIndex: currentPageIndex,
                     pageCount: pages.count,
+                    layoutContext: layoutContext,
                     paginationStyle: $settings.paginationStyle,
                     zoomPercent: topBarZoomPercent,
                     onResetZoom: resetZoom,
@@ -143,7 +173,7 @@ struct WritingScreen: View {
                 // Canvas area extracted into a helper to keep body small enough
                 // for the Swift type checker (the GeometryReader + gesture tree
                 // would otherwise exceed the compiler's expression-complexity limit).
-                canvasArea
+                canvasArea(layoutContext: layoutContext)
             } else {
                 // Pages not resolved yet — show the letterbox background, never
                 // an empty-page pagination view (see comment above).
@@ -175,7 +205,7 @@ struct WritingScreen: View {
     // Extracted from body to stay within Swift's expression-complexity limit.
 
     @ViewBuilder
-    private var canvasArea: some View {
+    private func canvasArea(layoutContext: EditorLayoutContext) -> some View {
         GeometryReader { _ in
             switch settings.paginationStyle {
             case .singlePage:
@@ -186,7 +216,7 @@ struct WritingScreen: View {
                 // clips the zoomed page to its slot, so nothing paints over the
                 // top bar either.
                 SinglePagesView(pages: pages,
-                                paper: paper,
+                                layoutContext: layoutContext,
                                 store: store,
                                 currentPageIndex: $currentPageIndex,
                                 onZoomChange: { zoom.setDisplayZoom($0) },
@@ -202,18 +232,18 @@ struct WritingScreen: View {
                 if EditorFeatureFlags.continuousNativeZoomEnabled {
                     switch EditorFeatureFlags.continuousNativeZoomPrototype {
                     case .perPage:
-                        continuousNativeArea(.perPage)
+                        continuousNativeArea(.perPage, layoutContext: layoutContext)
                             .onAppear {
                                 logContinuousPath("native prototype perPage")
                             }
                     case .stack:
-                        continuousNativeArea(.stack)
+                        continuousNativeArea(.stack, layoutContext: layoutContext)
                             .onAppear {
                                 logContinuousPath("native prototype stack")
                             }
                     }
                 } else {
-                    continuousArea
+                    continuousArea(layoutContext: layoutContext)
                         .onAppear {
                             logContinuousPath("legacy ContinuousPagesView")
                         }
@@ -251,10 +281,10 @@ struct WritingScreen: View {
     /// still uses the SwiftUI-transform approach; the UIScrollView migration
     /// done for Single lands here in a later increment.)
     @ViewBuilder
-    private var continuousArea: some View {
+    private func continuousArea(layoutContext: EditorLayoutContext) -> some View {
         ContinuousPagesView(
             pages: pages,
-            paper: paper,
+            layoutContext: layoutContext,
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
@@ -283,11 +313,12 @@ struct WritingScreen: View {
     /// owner while remaining locked at 1x in this increment.
     @ViewBuilder
     private func continuousNativeArea(
-        _ prototype: ContinuousNativeZoomPrototype
+        _ prototype: ContinuousNativeZoomPrototype,
+        layoutContext: EditorLayoutContext
     ) -> some View {
         ContinuousNativePagesView(
             pages: pages,
-            paper: paper,
+            layoutContext: layoutContext,
             store: store,
             currentPageIndex: $currentPageIndex,
             scrollTarget: scrollTarget,
@@ -458,8 +489,45 @@ struct WritingScreen: View {
     // MARK: - Load
 
     private func loadPages() {
+        logDocumentPageSpec()
+        logResolvedEditorLayout()
         pages = store.pages(of: document)
         currentPageIndex = 0
+    }
+
+    private func logDocumentPageSpec() {
+        #if DEBUG
+        let resolution = document.pageSpecResolution
+        let pageSpec: PageSpec
+        let source: String
+
+        if let debugPageSpec = debugEditorPageSpecOverride {
+            pageSpec = debugPageSpec
+            source = "debugOverride"
+        } else {
+            pageSpec = resolution.pageSpec
+            source = resolution.source.rawValue
+        }
+
+        let preset = PagePresetCatalog.name(for: pageSpec)
+            ?? PagePresetCatalog.preset(forID: resolution.presetID)?.name
+            ?? "custom"
+        let orientation = pageSpec.size.width > pageSpec.size.height
+            ? "landscape"
+            : "portrait"
+        print("[DOCUMENT-PAGE-SPEC] "
+            + "documentID=\(document.id?.uuidString ?? "nil") "
+            + "preset=\(preset) "
+            + "page=\(Int(pageSpec.size.width))x\(Int(pageSpec.size.height)) "
+            + "orientation=\(orientation) "
+            + "source=\(source)")
+        #endif
+    }
+
+    private func logResolvedEditorLayout() {
+        #if DEBUG
+        print("[EDITOR-LAYOUT] \(resolvedLayoutContext.debugDescription)")
+        #endif
     }
 
     // MARK: - Page CRUD (F-051)
