@@ -23,20 +23,93 @@ struct AppFlowCoordinatorTests {
 
         coordinator.start(request: request) { document }
 
-        guard case .ready(let destination) = coordinator.state else {
+        guard case .ready(.editor(let destination)) = coordinator.state else {
             Issue.record("Expected a ready destination")
-            return
-        }
-        guard case .editor(let route) = destination.route else {
-            Issue.record("Expected an Editor route")
             return
         }
 
         #expect(destination.document === document)
-        #expect(route.source == request.source)
-        #expect(route.windowLayoutPolicy == .documentDirected(editorPolicy))
+        #expect(destination.route.source == request.source)
+        #expect(destination.route.windowLayoutPolicy == .documentDirected(editorPolicy))
         #expect(appliedPolicies == [.documentDirected(editorPolicy)])
         #expect(coordinator.presentedOpenError == nil)
+    }
+
+    @Test func editorSocialReturnRestoresDocumentAndPoliciesInOrder() {
+        let document = makeUnmanagedDocument()
+        let editorPolicy = EditorWindowOrientationPolicy(
+            preferredInterfaceOrientations: [.landscapeLeft, .landscapeRight],
+            debugName: "landscape"
+        )
+        let componentEditorPolicy = ComponentWindowLayoutPolicy.documentDirected(
+            editorPolicy
+        )
+        var appliedPolicies: [ComponentWindowLayoutPolicy] = []
+        let coordinator = AppFlowCoordinator(
+            validateDocument: { _ in nil },
+            resolveEditorPolicy: { _ in editorPolicy },
+            applyWindowPolicy: { appliedPolicies.append($0) }
+        )
+
+        coordinator.start(
+            request: DocumentOpenRequest(
+                source: .developmentDocument(name: "return-document")
+            )
+        ) {
+            document
+        }
+        coordinator.handleEditorOutput(.showSocial)
+
+        guard case .ready(.social(let socialRoute)) = coordinator.state else {
+            Issue.record("Expected the Social destination")
+            return
+        }
+        #expect(socialRoute.windowLayoutPolicy == .systemResponsive)
+
+        coordinator.handleSocialOutput(.returnToEditor)
+
+        guard case .ready(.editor(let returnedDestination)) = coordinator.state else {
+            Issue.record("Expected the returned Editor destination")
+            return
+        }
+        #expect(returnedDestination.document === document)
+        #expect(returnedDestination.route.windowLayoutPolicy == componentEditorPolicy)
+        #expect(appliedPolicies == [
+            componentEditorPolicy,
+            .systemResponsive,
+            componentEditorPolicy
+        ])
+    }
+
+    @Test func componentOutputsAreIgnoredOutsideTheirOwningDestination() {
+        let document = makeUnmanagedDocument()
+        let editorPolicy = EditorWindowOrientationPolicy(
+            preferredInterfaceOrientations: [.portrait, .portraitUpsideDown],
+            debugName: "portrait"
+        )
+        var appliedPolicyCount = 0
+        let coordinator = AppFlowCoordinator(
+            validateDocument: { _ in nil },
+            resolveEditorPolicy: { _ in editorPolicy },
+            applyWindowPolicy: { _ in appliedPolicyCount += 1 }
+        )
+
+        coordinator.start(
+            request: DocumentOpenRequest(
+                source: .developmentDocument(name: "guard-document")
+            )
+        ) {
+            document
+        }
+        coordinator.handleSocialOutput(.returnToEditor)
+        coordinator.handleEditorOutput(.showSocial)
+        coordinator.handleEditorOutput(.showSocial)
+
+        #expect(appliedPolicyCount == 2)
+        guard case .ready(.social) = coordinator.state else {
+            Issue.record("Expected repeated or foreign intents to be ignored")
+            return
+        }
     }
 
     @Test func invalidDocumentStopsBeforePolicyResolutionAndEditorPresentation() {

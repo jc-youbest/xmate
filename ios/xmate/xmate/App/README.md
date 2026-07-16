@@ -4,10 +4,9 @@
 
 - `@main` scene setup; injects app-wide stores (NoteStore, SettingsStore)
   into the environment.
-- Cross-component flow coordination: `AppFlowCoordinator` owns typed route
-  state and the document resolve/validate/policy/present pipeline. The current
-  runtime has one Editor route; back/return and component output transitions
-  land with the next component. The settled contract is in
+- Cross-component flow coordination: `AppFlowCoordinator` owns typed Editor and
+  Social route state, the document resolve/validate/policy/present pipeline,
+  and explicit Editor↔Social return behavior. The settled contract is in
   `docs/architecture.md` (App component coordination).
 - Active-component window policy: the coordinator knows whether a component
   follows iPadOS orientation or, for Editor, follows the validated Document
@@ -31,8 +30,8 @@
   failures with stable error codes; RootView renders the failure, and the
   editor/orientation bridge are not loaded.
 - Global user preferences (SettingsStore, UserDefaults-backed).
-- Future: top-level switch between Social Screen and Content Screen;
-  entry flows from inbox / drafts / new creation that resolve a Document
+- Top-level switching between the Social Screen shell and Content Screen;
+  future entry flows from inbox / drafts / new creation resolve a Document
   and hand it to the editor.
 
 ## Key files
@@ -56,9 +55,8 @@
 
 ## Next step (current stage)
 
-- Add the first system-responsive component (the Social Screen stub) and use
-  the coordinator for explicit surface switching and return behavior without
-  changing Editor internals.
+- Keep the F-055 Social shell structural. Resume the prioritized Editor work;
+  add another App route only when its real component flow begins.
 
 ## Notes for AI changes
 

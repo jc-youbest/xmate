@@ -396,6 +396,13 @@ final class DrawingSessionManager {
         }
     }
 
+    /// Editor-owned departure handoff. App must not replace the Content Screen
+    /// until every authoritative canvas has synchronously persisted its latest
+    /// drawing. Canvas deregistration remains owned by normal SwiftUI teardown.
+    func flushForComponentDeparture() {
+        flushAllActive()
+    }
+
     // MARK: - Save gating
 
     /// Coordinator forwards every `canvasViewDrawingDidChange` here. Only the

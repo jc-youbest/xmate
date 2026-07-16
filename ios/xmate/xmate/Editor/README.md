@@ -60,7 +60,8 @@
 - `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
   `PencilKit/DrawingSessionManager.swift`
 - `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`
-- `State/EditorCommand.swift`, `State/EditorMutationPhase.swift`,
+- `State/EditorOutputIntent.swift`, `State/EditorCommand.swift`,
+  `State/EditorMutationPhase.swift`,
   `State/EditorOperationState.swift`
 - `Mutation/PageMutationCoordinator.swift`
 
@@ -103,9 +104,10 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
 - Command types are preparation only until a coordinator interprets them;
   do not bypass DrawingSessionManager or viewport invariants by dispatching
   ad-hoc side effects from the command model.
-- The future App flow coordinator does not interpret EditorCommand or own
-  viewport/page/PencilKit state. Before emitting a cross-component intent,
-  Editor owns any required operation settlement and drawing flush.
+- The App flow coordinator does not interpret EditorCommand or own
+  viewport/page/PencilKit state. Before `.showSocial`, WritingScreen rejects a
+  pending structural operation and synchronously flushes authoritative
+  drawings; preserve that departure boundary for future component intents.
 - Keep WritingTopBar presentational: WritingScreen interprets typed local
   actions and converts only component-exit requests into App-facing output.
 - Structural editor operations require a normal viewport. If Add Page, Delete

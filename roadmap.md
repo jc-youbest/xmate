@@ -76,15 +76,14 @@ matches Apple Notes. These writing-mode attachments — distinct from the
 photos placed in stationery mode (v2) — can be moved, scaled, and deleted
 at any time. They scale together with the page under zoom.
 
-**v1 status (as built, 2026-06).** Shipped: multi-page + paging, add /
+**v1 status (as built, 2026-07).** Shipped: multi-page + paging, add /
 delete page, delete document, the top bar, both Pagination Styles (F-056),
-zoom (F-053), stroke persistence. NOT yet shipped despite the description
-above — the Postcard preset (paper is hard-coded to Letter pending a
-per-document paper migration), the Social Screen stub (F-055), Reading
-Mode, and media attachments (F-054). Current priority re-orders the
-remainder: finish the zoom defects (F-059, F-060) and media (F-054), then
-move to v2 stationery; the Social stub, Reading Mode and per-document paper
-are deferred behind v2. Remaining items are tracked in the Backlog.
+zoom (F-053), stroke persistence, document presets/orientation, App flow
+coordination (F-061), and the structural Social Screen switch (F-055). NOT yet
+shipped despite the description above — user-facing paper selection, Reading
+Mode, and media attachments (F-054). Current priority re-orders the remainder:
+finish the zoom defects (F-059, F-060) and media (F-054), then move to v2
+stationery. Remaining items are tracked in the Backlog.
 
 ## v2 — Personalized stationery template editor
 
@@ -157,17 +156,13 @@ ones here. Gaps are normal (withdrawn IDs).
 - F-051 Multi-page document and page turning
 - F-053 Page geometry and zoom (300% cap, HUD, dual reset)
 - F-056 Pagination style (Single Page / Continuous, global preference)
+- F-055 Social Screen v1 stub — structural shell + explicit switching with the
+  Content Screen.
+- F-061 App flow coordinator + full-screen document orientation
 
 ## v1 remainder
 
 Next Editor increment (current priority), in order:
-
-- F-061 App flow coordinator + full-screen document orientation — typed
-  resolve/validate/policy/present state for the current Editor route; require
-  full-screen iPad presentation so a validated portrait/landscape Document can
-  maintain its interface orientation after physical device rotation. External
-  Split View / Stage Manager is intentionally unsupported; internal workspace
-  composition remains available.
 
 - F-059 Continuous native zoom/pan — replace the laggy per-frame SwiftUI
   stack transform with a feature-flagged sibling path. Per-page native zoom
@@ -187,8 +182,6 @@ Next Editor increment (current priority), in order:
 
 Deferred behind v2 (were v1; re-prioritised — authoring foundation first):
 
-- F-055 Social Screen v1 stub — structural shell + explicit switching
-  with the Content Screen.
 - Reading Mode — read-only Content Screen variant sharing the layout.
 - Per-document paper — drop the `PaperPreset.letter` hard-code (Core Data
   migration) so the Postcard preset actually ships; folds into the v2

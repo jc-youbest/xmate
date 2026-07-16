@@ -223,7 +223,7 @@ Major lifecycle/timing problems, newest first. Record the symptom, what is
 actually known, what was tried and rejected, and the current status — so a
 future session does not re-walk the same dead ends.
 
-### Landscape Editor follows physical rotation to portrait — STATUS: FULL-SCREEN FIX IMPLEMENTED; DEVICE RE-TEST PENDING (2026-07)
+### Landscape Editor follows physical rotation to portrait — STATUS: FIXED AND DEVICE-VERIFIED (2026-07)
 
 **Symptom.** A validated A4 landscape Document opened with landscape paper and
 horizontal Continuous flow. Rotating the physical iPad to portrait then
@@ -247,15 +247,21 @@ Editor Workspace composition and do not require external system windows. The
 settled product/flow design, rejected small-page fallback, and F-061/F-062 split
 are recorded in `product.md`, `architecture.md`, and `roadmap.md`.
 
-**Device re-test progress.** Portrait passed on iPad: the App requested
+**Device verification.** Portrait passed on iPad: the App requested
 `document-portrait` without the earlier windowing-mode failure, and physical
 device rotation no longer rotated the App away from portrait. ToolPicker,
 Continuous navigation, zoom/reset, drawing, and switching to Single Page
-remained operational in the same session. Landscape remains to be re-tested;
-the DEBUG creation probe is temporarily fixed to `a4-landscape` so acceptance
-does not depend on its former random selection. Confirm the App enters and
-stays landscape, the rejection log remains absent, and the same Editor
-behaviors remain intact.
+remained operational in the same session. Landscape then passed with the
+persisted 842×595 page spec and `request=document-landscape` without a failure;
+physical device rotation no longer moved the App away from landscape. Page
+navigation, Add Page including reset-before-operation while zoomed, zoom,
+ToolPicker/canvas teardown, and Single Page switching remained operational.
+The subsequent Editor↔Social component-flow acceptance repeatedly produced
+`document-landscape` → `system-responsive` → `document-landscape` without a
+geometry-request failure. Social followed physical device orientation; return
+restored the same persisted landscape Document and its horizontal Editor
+layout. Drawing persistence, ToolPicker, Single Page, Continuous, zoom, and
+reset-before-Add Page remained operational across the transitions.
 
 ### Continuous zoomed pan lag — STATUS: DIAGNOSED; NATIVE PROTOTYPE PLANNED (2026-06)
 

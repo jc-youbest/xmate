@@ -28,13 +28,13 @@ import SwiftUI
 /// loaded, its stored `pagePresetID` is the source for validation, editor
 /// layout, and window orientation.
 private enum DevDocumentPagePresetProbe {
-    // Keep deterministic while F-061 device acceptance verifies both document
-    // orientations. Switch deliberately instead of relying on Bool.random(),
-    // which can repeatedly select the already-tested path across app launches.
-    static let creationPresetID: String? = "a4-landscape"
+    // Normal development uses the default named document. Set one of the
+    // explicit ids temporarily when a persisted preset-specific path needs
+    // focused device testing; never use random selection for acceptance runs.
+    static let creationPresetID: String? = nil
+    // static let creationPresetID: String? = "a4-landscape"
     // static let creationPresetID: String? = "a4-portrait"
     // static let creationPresetID: String? = "postcard-landscape"
-    // static let creationPresetID: String? = nil
 
     static var preset: PagePresetCatalog.Preset? {
         PagePresetCatalog.preset(forID: creationPresetID)
@@ -101,9 +101,14 @@ struct RootView: View {
     private func destinationView(
         _ destination: ResolvedAppDestination
     ) -> some View {
-        switch destination.route {
-        case .editor:
-            WritingScreen(document: destination.document)
+        switch destination {
+        case .editor(let editorDestination):
+            WritingScreen(
+                document: editorDestination.document,
+                onOutput: coordinator.handleEditorOutput
+            )
+        case .social:
+            SocialScreen(onOutput: coordinator.handleSocialOutput)
         }
     }
 

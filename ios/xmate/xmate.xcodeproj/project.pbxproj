@@ -37,6 +37,7 @@
 				Editor/README.md,
 				Library/README.md,
 				Shared/README.md,
+				Social/README.md,
 				Storage/README.md,
 			);
 			target = E5936AFC2FB49F8500496AF1 /* xmate */;

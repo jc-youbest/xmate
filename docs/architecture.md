@@ -23,8 +23,9 @@ each module's README next to its code (`ios/xmate/xmate/<Module>/README.md`).
   or navigation.
 - **Library** (`Library/`) — placeholder; personal collection and mailbox
   list/query UI lands in v3. Emits selection intents; it does not open Editor.
-- **Social** (no folder until its first file) — future send form, pen-pal and
-  delivery behavior, and social surfaces. It does not embed or call Editor.
+- **Social** (`Social/`) — the current structural Social Screen shell; future
+  send form, pen-pal, and delivery behavior. It emits typed intents and does
+  not embed or call Editor.
 - **Shared** (`Shared/`) — truly cross-module small types only
   (currently `PaginationStyle`, `Comparable.clamped`). Not a junk drawer.
 
@@ -220,9 +221,9 @@ The coordinator applies the active policy to `AppWindowLayoutPolicyStore`,
 which is the source used by
 `UIApplicationDelegate.application(_:supportedInterfaceOrientationsFor:)`.
 `WindowOrientationPolicyBridge` then calls `UIWindowScene.requestGeometryUpdate`
-for the current scene as a best-effort request. The current runtime exercises
-the document-directed Editor case; the first ordinary component will exercise
-system-responsive policy replacement.
+for the current scene as a best-effort request. The runtime exercises both
+categories: Editor is document-directed, while the standalone Social Screen is
+system-responsive. Returning to Editor reapplies its stored route policy.
 
 This keeps the editor's document model clean: `PageSpec` remains paper
 semantics, while App owns the supported/preferred window orientation. The
@@ -416,11 +417,10 @@ files. Record decisions, not plans.
 ### App component coordination
 
 App owns a small state-driven flow coordinator for transitions between full UI
-components. The first runtime increment introduces `AppFlowCoordinator`, a
-typed `AppRoute`, and resolving/ready/failed flow state while intentionally
-supporting only one route: Editor. `RootView` renders that state and supplies
-the current source-specific named development-document resolver; it no longer
-performs validation, policy derivation, or destination selection itself.
+components. `AppFlowCoordinator` exposes typed Editor and Social routes plus
+resolving/ready/failed flow state. `RootView` renders that state and supplies
+the current source-specific named development-document resolver; it does not
+perform validation, policy derivation, or destination selection itself.
 
 The current typed document-open source is the stable development-document
 name. The resolved Core Data Document is held beside the route in
@@ -455,26 +455,29 @@ only then present `WritingScreen`. Failure stops before Editor construction and
 uses the existing App-layer open error. Back/return behavior is the inverse
 route transition owned by App, not an Editor or Library side effect.
 
-Leaving Editor for another component requires an Editor-owned handoff before
-App changes route: finish or reject any pending structural editor operation,
-flush the authoritative drawing state when required, then emit a typed output
-intent carrying the stable document id. App may then resolve/create the target
-record and present the next component. App does not interpret
+Leaving Editor for Social uses an Editor-owned handoff before App changes
+route. WritingScreen rejects the request while a page mutation or structural
+operation is pending, synchronously flushes every authoritative drawing
+canvas, then emits `.showSocial`. App stores the resolved Editor destination
+as the inverse transition, applies Social's system-responsive policy, and
+presents the Social shell. Social emits `.returnToEditor`; App restores the
+same resolved Document and reapplies its document-directed policy. Normal
+SwiftUI teardown still unregisters the old canvases, and returning constructs
+fresh views from the already-flushed canonical drawings. App does not interpret
 `EditorCommand`, viewport commands, zoom ownership, page mutation phases, or
 PencilKit state; those remain Editor-internal transaction mechanisms despite
 the coordinator terminology.
 
-The first implementation reproduces today's single development-document
-startup: source resolution runs once, invalid documents reach the same failed
-UI/alert without resolving or applying an Editor orientation policy, and valid
-documents apply their document-directed policy before the ready destination is
-published. The background window bridge then performs the scene geometry
-request. A real route stack, back/return transitions, Editor departure handoff,
-and a system-responsive destination remain deferred until the next component
-lands. Deep links, multi-window restoration, and a general navigation framework
-remain out of scope. *Rejected:* ad hoc component-to-component calls; managed
-objects stored in route values; an App coordinator that owns Editor interaction
-state.
+Initial source resolution runs once. Invalid documents reach the existing
+failed UI/alert without resolving or applying an Editor policy; valid documents
+apply their document-directed policy before publication. The Editor/Social
+pair deliberately uses an explicit inverse transition rather than introducing
+a general navigation stack for two surfaces. Social is only a structural shell;
+it neither queries mailbox data nor creates envelope records. Deep links,
+multi-window restoration, arbitrary route history, and a general navigation
+framework remain out of scope. *Rejected:* ad hoc component-to-component calls;
+managed objects stored in route values; an App coordinator that owns Editor
+interaction state; building a generic stack before a third route needs it.
 
 ### Document envelope boundary
 

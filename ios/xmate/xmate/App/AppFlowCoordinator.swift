@@ -1,9 +1,9 @@
 // AppFlowCoordinator
 //
-// App-owned component routing and document-open coordination. The current
-// increment intentionally has one route (Editor) and one source (the named
-// development document); future Library/Social sources enter through the same
-// resolve -> validate -> window policy -> present pipeline.
+// App-owned component routing and document-open coordination. It opens Editor
+// through resolve -> validate -> window policy -> present, and
+// owns explicit switching between the mutually exclusive Editor and Social
+// surfaces. Components emit typed intents; neither component calls the other.
 
 import Combine
 import Foundation
@@ -21,20 +21,41 @@ struct EditorRoute: Equatable {
     let windowLayoutPolicy: ComponentWindowLayoutPolicy
 }
 
+struct SocialRoute: Equatable {
+    let windowLayoutPolicy: ComponentWindowLayoutPolicy = .systemResponsive
+}
+
 enum AppRoute: Equatable {
     case editor(EditorRoute)
+    case social(SocialRoute)
 
     var windowLayoutPolicy: ComponentWindowLayoutPolicy {
         switch self {
         case .editor(let route):
             route.windowLayoutPolicy
+        case .social(let route):
+            route.windowLayoutPolicy
         }
     }
 }
 
-struct ResolvedAppDestination {
-    let route: AppRoute
+struct ResolvedEditorDestination {
+    let route: EditorRoute
     let document: Document
+}
+
+enum ResolvedAppDestination {
+    case editor(ResolvedEditorDestination)
+    case social(SocialRoute)
+
+    var route: AppRoute {
+        switch self {
+        case .editor(let destination):
+            .editor(destination.route)
+        case .social(let route):
+            .social(route)
+        }
+    }
 }
 
 enum AppFlowState {
@@ -55,6 +76,7 @@ final class AppFlowCoordinator: ObservableObject {
     private let validateDocument: DocumentValidator
     private let resolveEditorPolicy: EditorPolicyResolver
     private let applyWindowPolicy: WindowPolicyApplier
+    private var editorReturnDestination: ResolvedEditorDestination?
 
     init(
         validateDocument: @escaping DocumentValidator = DocumentOpenValidator.validate,
@@ -83,6 +105,31 @@ final class AppFlowCoordinator: ObservableObject {
         presentedOpenError = nil
     }
 
+    func handleEditorOutput(_ intent: EditorOutputIntent) {
+        switch intent {
+        case .showSocial:
+            guard case .ready(.editor(let editorDestination)) = state else {
+                return
+            }
+
+            editorReturnDestination = editorDestination
+            present(.social(SocialRoute()))
+        }
+    }
+
+    func handleSocialOutput(_ intent: SocialScreenOutputIntent) {
+        switch intent {
+        case .returnToEditor:
+            guard case .ready(.social) = state,
+                  let editorReturnDestination else {
+                return
+            }
+
+            self.editorReturnDestination = nil
+            present(.editor(editorReturnDestination))
+        }
+    }
+
     private func openDocument(
         request: DocumentOpenRequest,
         resolveDocument: () -> Document
@@ -98,16 +145,22 @@ final class AppFlowCoordinator: ObservableObject {
         let componentPolicy = ComponentWindowLayoutPolicy.documentDirected(
             resolveEditorPolicy(document)
         )
-        let route = AppRoute.editor(
-            EditorRoute(
-                source: request.source,
-                windowLayoutPolicy: componentPolicy
-            )
+        let route = EditorRoute(
+            source: request.source,
+            windowLayoutPolicy: componentPolicy
         )
 
-        applyWindowPolicy(componentPolicy)
-        state = .ready(
-            ResolvedAppDestination(route: route, document: document)
+        present(
+            .editor(
+                ResolvedEditorDestination(route: route, document: document)
+            )
         )
+    }
+
+    /// Policy is applied before the destination is published, so a component
+    /// never appears under the previous component's orientation contract.
+    private func present(_ destination: ResolvedAppDestination) {
+        applyWindowPolicy(destination.route.windowLayoutPolicy)
+        state = .ready(destination)
     }
 }
