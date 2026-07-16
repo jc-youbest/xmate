@@ -59,7 +59,8 @@ Each module is a folder under `ios/xmate/xmate/` with its own README:
 - **Storage/** — Core Data store, entities, drawing persistence. No UI.
 - **Library/** — placeholder until v3 (personal document manager).
 - **Shared/** — truly cross-module small types only (no junk drawer).
-- Social — no code folder yet; created with its first file (v3+).
+- **Social/** — social-facing UI and typed component outputs; currently the
+  F-055 structural screen shell, with concrete features deferred to v3+.
 
 Dependency arrows point one way: App → Editor → Storage; everything may
 use Shared; nothing imports App.

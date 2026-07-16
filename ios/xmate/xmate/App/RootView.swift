@@ -4,9 +4,10 @@
 // top of the iOS source tree, deliberately independent of every module
 // folder (Editor/, Storage/, and the future Library/, Social/).
 //
-// Its single architectural job: decide WHICH document the editor opens
-// and inject it. The editor (WritingScreen) never chooses its own
-// document — document identity always flows in from outside.
+// It renders AppFlowCoordinator state and supplies the current v1
+// source-specific development-document resolver. The coordinator owns the
+// resolve -> validate -> window policy -> present sequence. The editor
+// (WritingScreen) never chooses its own document.
 //
 // v1: hard-coded dev document name (load-or-create on first launch).
 // Future sources resolve a Document the same way and pass it down
@@ -27,11 +28,13 @@ import SwiftUI
 /// loaded, its stored `pagePresetID` is the source for validation, editor
 /// layout, and window orientation.
 private enum DevDocumentPagePresetProbe {
-    static let creationPresetID: String? = Bool.random()
-        ? "a4-landscape"
-        : "a4-portrait"
+    // Normal development uses the default named document. Set one of the
+    // explicit ids temporarily when a persisted preset-specific path needs
+    // focused device testing; never use random selection for acceptance runs.
+    static let creationPresetID: String? = nil
+    // static let creationPresetID: String? = "a4-landscape"
+    // static let creationPresetID: String? = "a4-portrait"
     // static let creationPresetID: String? = "postcard-landscape"
-    // static let creationPresetID: String? = nil
 
     static var preset: PagePresetCatalog.Preset? {
         PagePresetCatalog.preset(forID: creationPresetID)
@@ -45,23 +48,20 @@ private enum DevDocumentPagePresetProbe {
 
 struct RootView: View {
     @EnvironmentObject var store: NoteStore
+    @StateObject private var coordinator = AppFlowCoordinator()
 
     /// v1 development document name. Replaced by Library / inbox / new-
     /// creation flows when they land.
     private static let devDocumentName = "dev-default-document"
 
-    /// The document open result. Resolved and validated once on appear before
-    /// the editor is allowed to load.
-    @State private var documentState: DocumentState = .resolving
-    @State private var presentedOpenError: DocumentOpenError?
-
     var body: some View {
         Group {
-            if case .ready(let document) = documentState {
-                WritingScreen(document: document)
-            } else if case .failed(let error) = documentState {
+            switch coordinator.state {
+            case .ready(let destination):
+                destinationView(destination)
+            case .failed(let error):
                 DocumentOpenErrorView(error: error)
-            } else {
+            case .resolving:
                 // One-frame placeholder while the document resolves;
                 // matches the editor's letterbox background.
                 Color(.systemGroupedBackground)
@@ -69,52 +69,63 @@ struct RootView: View {
             }
         }
         .onAppear {
-            // v1 hard-coded document selection — the ONLY place in the
-            // app that decides which document is opened.
-            if case .resolving = documentState {
-                resolveAndValidateDevDocument()
-            }
+            coordinator.start(
+                request: devDocumentOpenRequest,
+                resolveDocument: resolveDevDocument
+            )
         }
         .alert(
             "Cannot Open Document",
             isPresented: Binding(
-                get: { presentedOpenError != nil },
-                set: { if !$0 { presentedOpenError = nil } }
+                get: { coordinator.presentedOpenError != nil },
+                set: { if !$0 { coordinator.dismissOpenError() } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            if let presentedOpenError {
+            if let presentedOpenError = coordinator.presentedOpenError {
                 Text("\(presentedOpenError.message)\nCode: \(presentedOpenError.code.rawValue)")
             }
         }
         .background {
-            if case .ready(let document) = documentState {
+            if case .ready(let destination) = coordinator.state {
                 WindowOrientationPolicyBridge(
-                    policy: .preferred(for: document)
+                    policy: destination.route.windowLayoutPolicy
                 )
                 .frame(width: 0, height: 0)
             }
         }
     }
 
-    private enum DocumentState {
-        case resolving
-        case ready(Document)
-        case failed(DocumentOpenError)
+    @ViewBuilder
+    private func destinationView(
+        _ destination: ResolvedAppDestination
+    ) -> some View {
+        switch destination {
+        case .editor(let editorDestination):
+            WritingScreen(
+                document: editorDestination.document,
+                onOutput: coordinator.handleEditorOutput
+            )
+        case .social:
+            SocialScreen(onOutput: coordinator.handleSocialOutput)
+        }
     }
 
-    private func resolveAndValidateDevDocument() {
-        let resolvedDocument = resolveDevDocument()
-        if let error = DocumentOpenValidator.validate(resolvedDocument) {
-            documentState = .failed(error)
-            presentedOpenError = error
-        } else {
-            EditorWindowOrientationPolicyStore.shared.apply(
-                .preferred(for: resolvedDocument)
+    private var devDocumentOpenRequest: DocumentOpenRequest {
+        #if DEBUG
+        if let preset = DevDocumentPagePresetProbe.preset {
+            return DocumentOpenRequest(
+                source: .developmentDocument(
+                    name: DevDocumentPagePresetProbe.documentName(for: preset)
+                )
             )
-            documentState = .ready(resolvedDocument)
         }
+        #endif
+
+        return DocumentOpenRequest(
+            source: .developmentDocument(name: Self.devDocumentName)
+        )
     }
 
     private func resolveDevDocument() -> Document {

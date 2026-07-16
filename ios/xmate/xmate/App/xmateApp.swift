@@ -11,7 +11,7 @@ final class XmateAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
-        EditorWindowOrientationPolicyStore.shared.supportedInterfaceOrientations
+        AppWindowLayoutPolicyStore.shared.supportedInterfaceOrientations
     }
 }
 

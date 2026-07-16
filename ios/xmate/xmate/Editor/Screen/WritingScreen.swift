@@ -80,6 +80,15 @@ struct WritingScreen: View {
     /// The document being edited — injected by the composition root
     /// (AppRoot). See file header.
     let document: Document
+    let onOutput: (EditorOutputIntent) -> Void
+
+    init(
+        document: Document,
+        onOutput: @escaping (EditorOutputIntent) -> Void = { _ in }
+    ) {
+        self.document = document
+        self.onOutput = onOutput
+    }
 
     /// Base editor configuration. The document supplies the page spec at render
     /// time; existing viewport code still consumes PaperSize through
@@ -159,6 +168,7 @@ struct WritingScreen: View {
                     layoutContext: layoutContext,
                     paginationStyle: $settings.paginationStyle,
                     zoomPercent: topBarZoomPercent,
+                    onShowSocial: handleShowSocial,
                     onResetZoom: resetZoom,
                     onAddPage: handleAddPage,
                     onDeletePage: { showDeletePageAlert = true },
@@ -531,6 +541,24 @@ struct WritingScreen: View {
     }
 
     // MARK: - Page CRUD (F-051)
+
+    private func handleShowSocial() {
+        guard mutationPhase == .idle,
+              editorOperationPhase == .idle else {
+            logEditorOperation(
+                "Show Social ignored while operation is pending "
+                    + "mutation=\(mutationPhase) operation=\(editorOperationPhase)"
+            )
+            return
+        }
+
+        // Commit the authoritative drawings before App replaces the route.
+        // SwiftUI teardown will unregister canvases afterward, but the App
+        // transition must not be the event that makes persistence eventually
+        // happen.
+        DrawingSessionManager.shared.flushForComponentDeparture()
+        onOutput(.showSocial)
+    }
 
     private func handleAddPage() {
         handleAddPageRequested()
