@@ -205,6 +205,8 @@ Deferred behind v2 (were v1; re-prioritised — authoring foundation first):
   space-reserving mailbox sidebar (Inbox/Drafts/Outbox/Sent) or floating Send
   Form. Sidebar resize uses an ordered Editor viewport transaction; floating
   forms suspend underlying Pencil input and restore canvas/ToolPicker state.
+  Sidebar browsing freezes the committed App orientation; the latest selected
+  Document orientation is applied only when Editor returns to full screen.
 
 ## v3+/v4 — Account & social
 

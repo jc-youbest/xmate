@@ -192,9 +192,11 @@ There are two component policy categories:
   adapt in each actual viewport.
 - **Document-directed** — Editor is the deliberate exception. After App has
   validated the Document, the coordinator derives the supported/preferred
-  interface orientation from its persisted page preset and applies that policy
-  for the lifetime of the Editor route. In full-screen use, rotating the
-  physical iPad must not rotate Editor away from the document orientation.
+  interface orientation from its persisted page preset. A full-screen Editor
+  presentation applies that policy and physical iPad rotation must not move it
+  away from the document orientation. An Editor Workspace with a visible
+  mailbox sidebar instead keeps its last committed window policy even when the
+  selected Document changes; the commit timing is defined below.
 
 These policies govern the window request, not component layout algorithms.
 Every component still lays itself out within the actual region it receives.
@@ -202,8 +204,9 @@ xmate now requires full-screen iPad presentation and opts out of external Split
 View / Stage Manager resizing so Editor's document-directed policy can be
 enforced. Internal workspace composition still changes child viewports: a
 mailbox sidebar can reduce Editor's width even though the App window remains
-full-screen. For Editor, the Document remains the semantic orientation source
-for every such layout.
+full-screen. The Document remains the semantic source for page layout, while
+workspace presentation state determines when its orientation becomes the App
+window policy.
 
 The app target currently generates its Info.plist from build settings.
 For iPad (`TARGETED_DEVICE_FAMILY = 2`), both Debug and Release declare
@@ -575,8 +578,32 @@ App owns workspace composition and accessory presentation state. Library or
 Social supplies the sidebar/form UI and emits typed intents. Editor receives
 only its assigned viewport and typed lifecycle requests; no sibling module
 calls another. The outer Editor Workspace keeps the Document-directed window
-policy. A standalone Library, Social, or Send Form route instead uses a
-system-responsive policy.
+policy most recently committed for full-screen Editor. A standalone Library,
+Social, or Send Form route instead uses a system-responsive policy.
+
+While the mailbox sidebar is visible, selecting Documents from Inbox, Drafts,
+Outbox, or Sent must not repeatedly rotate the App. App resolves and validates
+each selection before injecting it into Editor, but selection updates only the
+workspace's current Document and Editor page layout. It does not replace
+`AppWindowLayoutPolicyStore` or issue a scene geometry request. The selected
+Document may therefore have a portrait page inside a landscape App UI, or the
+reverse; this temporary mismatch is intentional. Editor fits the fixed page
+into its reduced assigned viewport and never treats window orientation as a
+substitute for the Document's own PageSpec.
+
+The latest selected Document orientation becomes eligible for the window only
+when Editor is requested as the full-screen workspace. This includes initial
+full-screen opening, replacing the Document while already in a full-screen
+Editor flow, and dismissing the mailbox sidebar back to full-screen Editor.
+The request may originate from an external App-coordinated flow or from an
+Editor control, but Editor only emits a typed full-screen intent; App remains
+the sole owner that validates the latest selected Document, transitions the
+workspace presentation state, derives the document-directed policy, and
+applies it. The policy is derived at commit time from the latest validated
+selection, not cached from the Document that originally opened the workspace.
+This creates an explicit distinction between **selected Document orientation**
+and **committed window orientation** and prevents orientation thrashing during
+mailbox browsing.
 
 Changing the sidebar changes Editor viewport geometry and must be coordinated
 as an Editor workspace-layout transaction, not an unsequenced outer `HStack`
@@ -593,7 +620,9 @@ and restores the authoritative canvas/ToolPicker handoff when dismissed. The
 exact viewport transaction and suspension events are deferred until F-062 is
 implemented. *Rejected:* treating sidebar contents as direct Editor children;
 allowing Pencil input through a floating panel; shrinking the Editor below a
-useful writing size merely to preserve a side-by-side layout.
+useful writing size merely to preserve a side-by-side layout; applying every
+sidebar selection's Document orientation immediately and rotating the entire
+workspace while the user browses.
 
 ### Single Page paging
 
