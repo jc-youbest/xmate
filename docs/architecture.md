@@ -5,19 +5,26 @@ each module's README next to its code (`ios/xmate/xmate/<Module>/README.md`).
 
 ## Layering
 
-    App  →  Editor  →  Storage
-     │                    ↑
-     └────→ Library ──────┘        Shared: small cross-module types
+                    App
+              ┌─────┼─────┐
+              ↓     ↓     ↓
+           Editor Library Social
+              └─────┼─────┘
+                    ↓
+                 Storage       Shared: small cross-module types
 
 - **App** (`App/`) — entry layer: `@main`, RootView (composition root),
-  global settings. Depends on modules; no module ever imports from it.
+  global settings, and cross-component flow coordination. Depends on
+  modules; no module ever imports from it.
 - **Editor** (`Editor/`) — Content Screen: pagination, zoom, the
   PencilKit writing stack. Edits exactly the document it is given.
 - **Storage** (`Storage/`) — Core Data store, Document/Page entities,
-  drawing load/save. Knows nothing about UI (no pagination styles, no
-  zoom, no tool picker).
-- **Library** (`Library/`) — placeholder; document list / drafts /
-  inbox / sent letters land in v3.
+  future envelope records, and load/save/query APIs. Knows nothing about UI
+  or navigation.
+- **Library** (`Library/`) — placeholder; personal collection and mailbox
+  list/query UI lands in v3. Emits selection intents; it does not open Editor.
+- **Social** (no folder until its first file) — future send form, pen-pal and
+  delivery behavior, and social surfaces. It does not embed or call Editor.
 - **Shared** (`Shared/`) — truly cross-module small types only
   (currently `PaginationStyle`, `Comparable.clamped`). Not a junk drawer.
 
@@ -64,6 +71,8 @@ The editor never decides which document it shows.
   the default A4 portrait dev document.
 - Future sources — inbox (social), drafts/list (Library), new creation —
   all resolve a `Document` outside the editor and inject it the same way.
+  The App flow coordinator owns that resolution/open pipeline; a source
+  component reports a stable record id and never constructs Editor directly.
 
 ## Paper model
 
@@ -162,7 +171,34 @@ Current runtime views still use their existing layout code through the
 `PageGeometry` compatibility bridge; the engine is being introduced before
 it becomes authoritative.
 
-## Orientation and adaptive layout contract
+## Component orientation and adaptive layout contract
+
+Every UI component owns the adaptive layout of its own content, but App owns
+the active window-orientation policy. The App flow coordinator knows which
+policy belongs to the active component, applies it when that component becomes
+active, and replaces it when navigation activates another component. A
+component never changes the policy of a sibling or makes an independent window
+orientation request.
+
+There are two component policy categories:
+
+- **System-responsive** — the component accepts the portrait or landscape
+  arrangement supplied by iPadOS, normally following how the user holds the
+  iPad. Library, Social, Send Form, and other ordinary UI use this policy. Each
+  component decides how its own controls and content adapt in each actual
+  viewport.
+- **Document-directed** — Editor is the deliberate exception. After App has
+  validated the Document, the coordinator derives the supported/preferred
+  interface orientation from its persisted page preset and applies that policy
+  for the lifetime of the Editor route. In full-screen use, rotating the
+  physical iPad must not rotate Editor away from the document orientation.
+
+These policies govern the window request, not component layout algorithms.
+Every component still lays itself out within the actual viewport iPadOS gives
+it. This fallback is mandatory because Split View, Stage Manager, external
+displays, and other resizable-window situations can reject or constrain an
+orientation request. For Editor, the Document remains the semantic orientation
+source even when the actual viewport has a different aspect ratio.
 
 The app target currently generates its Info.plist from build settings.
 For iPad (`TARGETED_DEVICE_FAMILY = 2`), both Debug and Release declare
@@ -170,7 +206,8 @@ portrait and landscape interface orientations. The iPhone orientation keys
 are irrelevant because the target is iPad-only. There is no `UIDevice`
 orientation forcing.
 
-`RootView` derives an `EditorWindowOrientationPolicy` from the validated
+The current single-component runtime has `RootView` derive an
+`EditorWindowOrientationPolicy` from the validated
 document preset before the editor is loaded. That policy is written to the
 App-layer `EditorWindowOrientationPolicyStore`, which is also the source used
 by `UIApplicationDelegate.application(_:supportedInterfaceOrientationsFor:)`.
@@ -181,6 +218,9 @@ App layer owns the supported/preferred window orientation when the opened
 document is portrait or landscape. iPadOS may still reject a programmatic
 rotation request in Split View, Stage Manager, or other resizable-window
 scenarios, so views must always adapt to the actual viewport.
+When the App flow coordinator lands, this bridge becomes the
+document-directed case of the active component policy; the system-responsive
+case restores support for the system-supplied portrait/landscape arrangement.
 
 Before injecting a document into `WritingScreen`, `RootView` runs
 `DocumentOpenValidator`. Open-time document failures are App-layer errors
@@ -197,10 +237,11 @@ the current container supplied by iPadOS: full-screen, Split View, Stage
 Manager, resizable windows, and future external displays can all provide
 viewports whose aspect ratio does not match the document's paper. The
 editor must therefore always adapt layout to the actual viewport size.
-When full-screen and supported by the target, the app may also request a
-preferred interface orientation matching the document's page orientation,
-but that request is only a preference and cannot replace responsive
-layout.
+When Editor is active, App requests a supported/preferred interface orientation
+matching the document's page orientation and maintains that route policy so
+physical device rotation does not choose the opposite Editor orientation in
+full-screen use. That window policy cannot replace responsive layout when
+iPadOS supplies a constrained viewport.
 
 Recommended runtime contract:
 `PageSpec` describes document paper semantics; `LayoutPolicy` combines the
@@ -224,7 +265,9 @@ landscape canvas inside portrait chrome, or a horizontal page flow inside
 an independently portrait top bar. Page-specific components may adapt
 their layout from abstract values such as `PageFlowAxis`, presentation
 style, page size, and viewport dimensions, but the app/window orientation
-policy has one owner: `RootView` through `EditorWindowOrientationPolicy`.
+policy has one owner: currently `RootView` through
+`EditorWindowOrientationPolicy`, and later the App flow coordinator through
+the active route's component policy.
 
 Landscape support was able to reuse the existing portrait editor behavior
 because the core responsibilities are separated. `PageSpec` and
@@ -248,17 +291,14 @@ There are three separate orientation concepts:
   window that contains the editor.
 - Device orientation: how the user is physically holding the iPad.
 
-The app may request a window orientation that matches the document page
-orientation, but iPadOS remains authoritative. `requestGeometryUpdate` can
-fail in some windowing modes, including Split View, Stage Manager, or other
-resizable-window configurations. That failure does not mean layout is
-invalid; it only means the system declined a programmatic rotation request.
-When the target declares both portrait and landscape support, iPadOS may
-still rotate the app later in response to device orientation or windowing
-mode changes. The editor must handle both outcomes: use the document's
-page orientation to resolve paper and preferred flow, and use the actual
-window viewport to size and place WritingTopBar, pages, zoom surfaces, and
-canvas content.
+The active component policy requests the allowed window orientations, but
+iPadOS remains authoritative. `requestGeometryUpdate` can fail in some
+windowing modes, including Split View, Stage Manager, or other resizable-window
+configurations. That failure does not mean layout is invalid; it only means the
+system declined the requested geometry. A system-responsive component follows
+the resulting system orientation. Editor keeps the document's page orientation
+as its paper and preferred-flow source while using the actual viewport to size
+and place WritingTopBar, pages, zoom surfaces, and canvas content.
 
 `EditorCommand` / `ViewportCommand` / `DrawingCommand` are inert command
 values that describe future editor transactions such as scroll-to-page,
@@ -365,6 +405,106 @@ choice. All flows, whether internal to one module or spanning several,
 are recorded here in one place: telling them apart up front is hard and
 module boundaries move, so a single home avoids shuffling notes between
 files. Record decisions, not plans.
+
+### App component coordination
+
+Target contract (not runtime yet): App owns a small state-driven flow
+coordinator for transitions between full UI components. RootView renders the
+coordinator's state; it does not accumulate component-specific navigation
+calls. Editor, Library, and Social expose typed output intents, and App maps
+those intents to routes. No component imports App or constructs/calls a sibling
+component.
+
+Each route also declares its component window-layout policy. App knows whether
+the active component is system-responsive or document-directed and applies the
+matching supported/preferred interface orientations for only that route.
+Ordinary components follow iPadOS/device orientation and own their internal
+portrait/landscape adaptation. Editor uses the validated Document preset as its
+route policy and is not redirected by physical device rotation in full-screen
+use. In both categories, the component remains responsible for laying out its
+own UI in the actual viewport; it cannot affect a sibling's layout. The full
+contract and iPadOS fallback are defined in Component orientation and adaptive
+layout contract above.
+
+Routes carry stable record ids and source context, not Core Data managed
+objects. Opening a document always follows one App-owned pipeline: resolve the
+record through Storage, validate the raw persisted document with
+`DocumentOpenValidator`, derive/apply the editor window-orientation policy, and
+only then present `WritingScreen`. Failure stops before Editor construction and
+uses the existing App-layer open error. Back/return behavior is the inverse
+route transition owned by App, not an Editor or Library side effect.
+
+Leaving Editor for another component requires an Editor-owned handoff before
+App changes route: finish or reject any pending structural editor operation,
+flush the authoritative drawing state when required, then emit a typed output
+intent carrying the stable document id. App may then resolve/create the target
+record and present the next component. App does not interpret
+`EditorCommand`, viewport commands, zoom ownership, page mutation phases, or
+PencilKit state; those remain Editor-internal transaction mechanisms despite
+the coordinator terminology.
+
+The first implementation must reproduce today's single development-document
+startup before adding additional destinations. A typed route stack is the
+preferred representation, but deep links, multi-window restoration, and a
+general navigation framework are deliberately deferred. *Rejected:* ad hoc
+component-to-component calls; managed objects stored in navigation paths; an
+App coordinator that owns Editor interaction state.
+
+### Document envelope boundary
+
+`Document` remains the editable content aggregate: ordered pages, paper
+semantics, stationery, and handwriting. Social/mailbox metadata belongs to a
+separate future persisted envelope record that references one Document. Draft
+envelopes may have incomplete sender or recipient identity.
+
+The envelope uses stable participant ids and keeps mailbox location separate
+from delivery state. Mailbox location describes where the record is presented
+(`draft`, `inbox`, `outbox`, `sent`); delivery state later describes transport
+progress such as not submitted, queued, sending, delivered, or failed. A
+single outgoing envelope advances through Drafts, Outbox, and Sent rather than
+creating a list-specific copy at each step. Timestamps and a remote id can be
+added with the delivery implementation.
+
+Storage owns persistence, relationships, deletion rules, migrations, and
+queries for envelope records. Social owns recipient/send eligibility and
+delivery transitions. Library owns collection/mailbox presentation and emits
+selection intents. App owns the transition from a selected envelope to its
+validated Document or from Editor to Send Form. None of those concepts are
+added to `Document`, and envelope types do not move into Shared merely because
+several modules use the stored data.
+
+Before the schema is implemented, the product must settle whether sending
+freezes the referenced Document or creates an immutable snapshot, plus the
+relationship deletion rules. Envelope persistence, backend DTOs, networking,
+retry/sync state machines, and a new Domain module are deferred until the first
+Library/Social increment requires them. *Rejected:* sender/recipient/mailbox
+fields on Document; one overloaded status combining mailbox and transport;
+separate persisted copies for each mailbox list.
+
+### Writing top-bar coordination
+
+`WritingTopBar` remains a small Editor-owned presentation view. Its evolution
+path is strongly typed render state plus strongly typed actions, interpreted by
+`WritingScreen`; it does not become an editor or app coordinator. Editor-local
+actions such as zoom reset, page mutation, pagination preference, and future
+template/theme/style panels stay inside Editor. Actions that leave the Content
+Screen are converted by Editor into typed output intents for App.
+
+Editor owns one optional panel/popup selection rather than a Boolean per
+popover. Small document-editing panels remain local; Send Form and other full
+components are App routes. Any template/theme/style choice that changes page
+geometry or page-surface composition must enter the existing structural
+operation state machine and honor reset-before-operation.
+
+Toolbar layout adapts from the actual available viewport width, including
+Split View and Stage Manager, rather than device orientation, size class alone,
+or paper preset name. Essential navigation/status/actions remain visible;
+secondary actions move into overflow as width contracts. The existing custom
+top-bar/canvas boundary and hit-testing behavior remain intact. A generic
+`AnyView`/array-driven toolbar framework and placeholder future panels are
+deferred until real controls demonstrate the need. *Rejected:* direct sibling
+navigation from the top bar; top-bar ownership of panel or editor transaction
+state; layout branches based on preset names or physical device orientation.
 
 ### Single Page paging
 

@@ -16,6 +16,9 @@
     stored version is dropped (backstop against stale canvases).
 - StrokeSerializer: PKDrawing ⇄ Data (thin today; later schema version /
   compression / encryption).
+- Future: persisted document-envelope records and mailbox queries. Storage
+  owns schema/relationships only; envelope semantics and deferred decisions
+  are recorded in `docs/architecture.md` (Document envelope boundary).
 
 ## Key files
 
@@ -27,11 +30,14 @@
 - Any UI concept: pagination styles, zoom, tool picker, screens. Storage
   must compile without importing SwiftUI/PencilKit UI types.
 - Deciding which document the app opens (App layer).
+- App routes, mailbox presentation, recipient/send eligibility, or delivery
+  transitions.
 
 ## Next step (current stage)
 
-- Later: stationery entities, sync hooks (custom backend, not CloudKit),
-  and Library/new-document UI that calls the typed preset creation path.
+- Later: stationery entities and Library/new-document APIs. Add envelope
+  persistence only when its ownership/snapshot and deletion rules are settled
+  and the first Library/Social feature requires it.
 
 ## Notes for AI changes
 

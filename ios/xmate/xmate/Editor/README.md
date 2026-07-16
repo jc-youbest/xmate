@@ -4,6 +4,9 @@
 
 - Screen/: WritingScreen, the Writing-Mode variant of the Content Screen,
   plus WritingTopBar.
+- Screen/: future typed toolbar render state/actions and Editor-owned local
+  panel presentation. Cross-component output is emitted to App; the flow and
+  toolbar contracts are in `docs/architecture.md`.
 - Viewport/: both Pagination Styles: SinglePagesView (persistent offset carousel,
   flips animate offsets only — zero canvas recreation) and
   ContinuousPagesView / ContinuousNativePagesView.
@@ -19,6 +22,10 @@
 - Layout/: PageGeometry: PaperSize / PaperPreset catalogue / fit scale.
   EditorLayoutEngine is the future pure layout source; PageGeometry remains
   the compatibility bridge used by current runtime views.
+- Layout/: Editor is document-directed: App requests the validated Document's
+  interface orientation while this component is active. Editor owns its own
+  layout inside the actual viewport and never makes window-orientation requests
+  or affects another component.
 - Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
   LayoutPolicy now provide the current A4 portrait default plus data-only A4
   landscape and postcard presets, bridged back through PageGeometry so runtime
@@ -58,6 +65,10 @@
   App layer. No inbox/draft/new-document logic here, ever.
 - Persistence details: load/save goes through NoteStore (Storage).
 - Global preferences UI (App).
+- App route/back behavior, Send Form, envelope/mailbox state, and direct calls
+  to Library or Social.
+- Selecting or applying the app/window orientation policy (App); Editor only
+  adapts its content to its document semantics and actual viewport.
 
 ## Next step (current stage)
 
@@ -87,6 +98,11 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
 - Command types are preparation only until a coordinator interprets them;
   do not bypass DrawingSessionManager or viewport invariants by dispatching
   ad-hoc side effects from the command model.
+- The future App flow coordinator does not interpret EditorCommand or own
+  viewport/page/PencilKit state. Before emitting a cross-component intent,
+  Editor owns any required operation settlement and drawing flush.
+- Keep WritingTopBar presentational: WritingScreen interprets typed local
+  actions and converts only component-exit requests into App-facing output.
 - Structural editor operations require a normal viewport. If Add Page, Delete
   Page, future reorder/duplicate/template/image operations are requested while
   zoomed, the future transaction must request zoom reset, wait for reset
