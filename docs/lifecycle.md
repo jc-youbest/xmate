@@ -223,6 +223,40 @@ Major lifecycle/timing problems, newest first. Record the symptom, what is
 actually known, what was tried and rejected, and the current status — so a
 future session does not re-walk the same dead ends.
 
+### Landscape Editor follows physical rotation to portrait — STATUS: FULL-SCREEN FIX IMPLEMENTED; DEVICE RE-TEST PENDING (2026-07)
+
+**Symptom.** A validated A4 landscape Document opened with landscape paper and
+horizontal Continuous flow. Rotating the physical iPad to portrait then
+rotated the App interface to portrait while the paper correctly remained
+landscape, producing a small and unsuitable Writing surface.
+
+**Confirmed callback/result.** Document validation and Editor layout completed
+with the persisted 842×595 landscape spec. The App window bridge then logged
+`request=document-landscape`, but `UIWindowScene.requestGeometryUpdate` failed:
+"The current windowing mode does not allow for programmatic changes to
+interface orientation." The target declared all iPad orientations and did not
+set `UIRequiresFullScreen`, so the multitasking-capable window remained under
+system/device orientation control despite the route's document-directed mask.
+
+**Decision and implemented fix.** Both App build configurations now generate
+`UIRequiresFullScreen = true`. xmate intentionally gives up external Split
+View / Stage Manager windows so the application-delegate supported-orientation
+mask and scene geometry request can maintain Editor's validated Document
+orientation. Internal mailbox sidebars and floating forms remain in-app
+Editor Workspace composition and do not require external system windows. The
+settled product/flow design, rejected small-page fallback, and F-061/F-062 split
+are recorded in `product.md`, `architecture.md`, and `roadmap.md`.
+
+**Device re-test progress.** Portrait passed on iPad: the App requested
+`document-portrait` without the earlier windowing-mode failure, and physical
+device rotation no longer rotated the App away from portrait. ToolPicker,
+Continuous navigation, zoom/reset, drawing, and switching to Single Page
+remained operational in the same session. Landscape remains to be re-tested;
+the DEBUG creation probe is temporarily fixed to `a4-landscape` so acceptance
+does not depend on its former random selection. Confirm the App enters and
+stays landscape, the rejection log remains absent, and the same Editor
+behaviors remain intact.
+
 ### Continuous zoomed pan lag — STATUS: DIAGNOSED; NATIVE PROTOTYPE PLANNED (2026-06)
 
 **Symptom.** Continuous Page finger pan is seriously laggy while zoomed;

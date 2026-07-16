@@ -162,6 +162,13 @@ ones here. Gaps are normal (withdrawn IDs).
 
 Next Editor increment (current priority), in order:
 
+- F-061 App flow coordinator + full-screen document orientation — typed
+  resolve/validate/policy/present state for the current Editor route; require
+  full-screen iPad presentation so a validated portrait/landscape Document can
+  maintain its interface orientation after physical device rotation. External
+  Split View / Stage Manager is intentionally unsupported; internal workspace
+  composition remains available.
+
 - F-059 Continuous native zoom/pan — replace the laggy per-frame SwiftUI
   stack transform with a feature-flagged sibling path. Per-page native zoom
   proved smooth but failed two-half-page viewport semantics; retain it only for
@@ -201,6 +208,10 @@ Deferred behind v2 (were v1; re-prioritised — authoring foundation first):
   F-015 Handwriting search
 - F-048 Lock note (biometric) · F-049 Document thumbnails
 - Inbox / drafts / sent letters views feeding documents into the editor
+- F-062 Editor Workspace accessories — keep Editor mounted while App composes a
+  space-reserving mailbox sidebar (Inbox/Drafts/Outbox/Sent) or floating Send
+  Form. Sidebar resize uses an ordered Editor viewport transaction; floating
+  forms suspend underlying Pencil input and restore canvas/ToolPicker state.
 
 ## v3+/v4 — Account & social
 

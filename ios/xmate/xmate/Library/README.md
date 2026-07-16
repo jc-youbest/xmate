@@ -10,6 +10,9 @@
 - System-responsive adaptive layout: Library owns its portrait/landscape UI for
   the viewport supplied by iPadOS. App applies that component policy; Library
   does not request a window orientation or affect another component.
+- Future: provide mailbox sidebar content for App's Editor Workspace. In that
+  presentation it inherits the outer Editor policy and emits selection intents;
+  it does not resize or call Editor directly.
 
 ## Key files
 

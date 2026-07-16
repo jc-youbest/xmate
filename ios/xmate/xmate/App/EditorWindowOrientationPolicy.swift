@@ -49,23 +49,48 @@ struct EditorWindowOrientationPolicy: Equatable {
     }
 }
 
-final class EditorWindowOrientationPolicyStore {
-    static let shared = EditorWindowOrientationPolicyStore()
+/// Window-orientation behavior declared by the active App component. Ordinary
+/// components accept the iPadOS arrangement; Editor carries a validated
+/// document-derived orientation policy. Components never apply this directly.
+enum ComponentWindowLayoutPolicy: Equatable {
+    case systemResponsive
+    case documentDirected(EditorWindowOrientationPolicy)
+
+    var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        switch self {
+        case .systemResponsive:
+            .all
+        case .documentDirected(let editorPolicy):
+            editorPolicy.preferredInterfaceOrientations
+        }
+    }
+
+    var debugName: String {
+        switch self {
+        case .systemResponsive:
+            "system-responsive"
+        case .documentDirected(let editorPolicy):
+            "document-\(editorPolicy.debugName)"
+        }
+    }
+}
+
+/// The single App/window owner for the active component policy.
+final class AppWindowLayoutPolicyStore {
+    static let shared = AppWindowLayoutPolicyStore()
 
     private init() {}
 
-    private(set) var supportedInterfaceOrientations: UIInterfaceOrientationMask = [
-        .portrait,
-        .portraitUpsideDown,
-    ]
+    private(set) var supportedInterfaceOrientations: UIInterfaceOrientationMask =
+        ComponentWindowLayoutPolicy.systemResponsive.supportedInterfaceOrientations
 
-    func apply(_ policy: EditorWindowOrientationPolicy) {
-        supportedInterfaceOrientations = policy.preferredInterfaceOrientations
+    func apply(_ policy: ComponentWindowLayoutPolicy) {
+        supportedInterfaceOrientations = policy.supportedInterfaceOrientations
     }
 }
 
 struct WindowOrientationPolicyBridge: UIViewRepresentable {
-    let policy: EditorWindowOrientationPolicy
+    let policy: ComponentWindowLayoutPolicy
 
     func makeUIView(context: Context) -> OrientationPolicyView {
         OrientationPolicyView()
@@ -76,10 +101,10 @@ struct WindowOrientationPolicyBridge: UIViewRepresentable {
     }
 
     final class OrientationPolicyView: UIView {
-        private var policy: EditorWindowOrientationPolicy?
+        private var policy: ComponentWindowLayoutPolicy?
         private var lastRequestedMask: UIInterfaceOrientationMask?
 
-        func apply(_ policy: EditorWindowOrientationPolicy) {
+        func apply(_ policy: ComponentWindowLayoutPolicy) {
             self.policy = policy
             requestIfPossible()
         }
@@ -91,16 +116,16 @@ struct WindowOrientationPolicyBridge: UIViewRepresentable {
 
         private func requestIfPossible() {
             guard let policy,
-                  lastRequestedMask != policy.preferredInterfaceOrientations,
+                  lastRequestedMask != policy.supportedInterfaceOrientations,
                   let windowScene = window?.windowScene else {
                 return
             }
 
-            lastRequestedMask = policy.preferredInterfaceOrientations
-            EditorWindowOrientationPolicyStore.shared.apply(policy)
+            lastRequestedMask = policy.supportedInterfaceOrientations
+            AppWindowLayoutPolicyStore.shared.apply(policy)
             window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             windowScene.requestGeometryUpdate(
-                .iOS(interfaceOrientations: policy.preferredInterfaceOrientations)
+                .iOS(interfaceOrientations: policy.supportedInterfaceOrientations)
             ) { error in
                 #if DEBUG
                 print("[WINDOW-ORIENTATION] request=\(policy.debugName) failed=\(error.localizedDescription)")

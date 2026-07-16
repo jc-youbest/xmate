@@ -26,6 +26,11 @@
   interface orientation while this component is active. Editor owns its own
   layout inside the actual viewport and never makes window-orientation requests
   or affects another component.
+- Future workspace integration: Editor may receive a reduced viewport when App
+  presents a mailbox sidebar, or be suspended beneath a floating Send Form.
+  App owns composition; Editor owns the ordered viewport/canvas/ToolPicker
+  transaction described in `docs/architecture.md` (Editor Workspace
+  accessories).
 - Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
   LayoutPolicy now provide the current A4 portrait default plus data-only A4
   landscape and postcard presets, bridged back through PageGeometry so runtime
