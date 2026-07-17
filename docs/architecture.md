@@ -18,9 +18,9 @@ each module's README next to its code (`ios/xmate/xmate/<Module>/README.md`).
   modules; no module ever imports from it.
 - **Editor** (`Editor/`) — Content Screen: pagination, zoom, the
   PencilKit writing stack. Edits exactly the document it is given.
-- **Storage** (`Storage/`) — Core Data store, Document/Page entities,
-  future envelope records, and load/save/query APIs. Knows nothing about UI
-  or navigation.
+- **Storage** (`Storage/`) — Core Data store, Document/Page content cache,
+  LetterEnvelope metadata cache, and load/save/query APIs. Knows nothing about
+  UI, navigation, or remote transport.
 - **Library** (`Library/`) — placeholder; personal collection and mailbox
   list/query UI lands in v3. Emits selection intents; it does not open Editor.
 - **Social** (`Social/`) — the current structural Social Screen shell; future
@@ -484,34 +484,156 @@ interaction state; building a generic stack before a third route needs it.
 
 ### Document envelope boundary
 
-`Document` remains the editable content aggregate: ordered pages, paper
-semantics, stationery, and handwriting. Social/mailbox metadata belongs to a
-separate future persisted envelope record that references one Document. Draft
-envelopes may have incomplete sender or recipient identity.
+Letter metadata and letter content are separate persisted records joined by a
+stable UUID. `LetterEnvelope` is the lightweight header/index record used to
+rebuild and display a mailbox without loading handwriting. `Document` is the
+content payload: ordered pages, paper semantics, stationery, and handwriting.
+Neither record embeds the other and the local Core Data model must not use a
+required object relationship between them. The durable association is
+`LetterEnvelope.documentID == Document.id`.
 
-The envelope uses stable participant ids and keeps mailbox location separate
-from delivery state. Mailbox location describes where the record is presented
-(`draft`, `inbox`, `outbox`, `sent`); delivery state later describes transport
-progress such as not submitted, queued, sending, delivered, or failed. A
-single outgoing envelope advances through Drafts, Outbox, and Sent rather than
-creating a list-specific copy at each step. Timestamps and a remote id can be
-added with the delivery implementation.
+Both ids are client-generated permanent UUIDs, created before any future
+network request and reused unchanged by the backend. They are never recycled.
+This lets an offline draft acquire its final identity at creation and avoids a
+second server-specific id namespace. Do not add `remoteID` unless a concrete
+backend constraint later proves that a second identifier is necessary.
 
-Storage owns persistence, relationships, deletion rules, migrations, and
-queries for envelope records. Social owns recipient/send eligibility and
-delivery transitions. Library owns collection/mailbox presentation and emits
-selection intents. App owns the transition from a selected envelope to its
-validated Document or from Editor to Send Form. None of those concepts are
-added to `Document`, and envelope types do not move into Shared merely because
-several modules use the stored data.
+The envelope header contains the fields required to render, organize, and
+resolve a letter without its Document payload:
 
-Before the schema is implemented, the product must settle whether sending
-freezes the referenced Document or creates an immutable snapshot, plus the
-relationship deletion rules. Envelope persistence, backend DTOs, networking,
-retry/sync state machines, and a new Domain module are deferred until the first
-Library/Social increment requires them. *Rejected:* sender/recipient/mailbox
-fields on Document; one overloaded status combining mailbox and transport;
-separate persisted copies for each mailbox list.
+```text
+LetterEnvelope
+├── id
+├── documentID
+├── title
+├── senderID?                // optional for incomplete drafts
+├── recipientID?             // optional for incomplete drafts
+├── mailboxLocation
+├── deliveryState
+├── documentRevision
+├── createdAt
+├── updatedAt
+├── sentAt?
+└── receivedAt?
+```
+
+Optional values are still first-class schema fields; an incomplete draft has
+the full envelope shape with nil participant/delivery timestamps rather than a
+different record format. `documentRevision` is the server-authoritative
+content version used later to distinguish a valid local cache hit from a stale
+Document with the same UUID. A monotonic revision or equivalent opaque version
+is preferred over comparing device timestamps. The current local-only
+increment may initialize a local revision without implementing server conflict
+or synchronization behavior.
+
+There are exactly four initial **system mailbox locations**: `inbox`, `draft`,
+`outbox`, and `sent`. They are fixed typed values, not user-created Folder
+records and not four separate stores or entities. Storage keeps one envelope
+record per `id`; Library forms each list by querying `mailboxLocation`. Moving
+a letter from Drafts to Outbox updates that same envelope atomically and never
+copies it into a list-specific record. Trash, Archive, Spam, custom folders,
+rules, labels, and folder hierarchies are not part of this model. If custom
+organization is later justified, it gets a separate Folder/membership design
+without changing the meaning of `mailboxLocation`.
+
+Mailbox location and delivery state remain orthogonal. Location answers where
+the current user's header is listed; delivery state answers what has happened
+to outgoing transport. The local Send action may change an eligible draft to
+`outbox` plus the smallest queued delivery value, but it must not move it to
+`sent` or claim remote success. Do not pre-build sending, retry, delivered, or
+failure state machines for F-062. Deterministic Inbox/Sent development records
+are seed history, not evidence produced by the local Send action.
+
+A locally created draft is one atomic Storage operation: create its envelope,
+its Document, and the Document's first Page together. The objects are stored
+separately but the operation must not publish an envelope whose initial local
+Document failed to save. Drafts may keep sender or recipient nil. Queueing a
+draft first flushes authoritative drawing state and freezes the existing
+Document revision; it does not create a snapshot or a second Document. A later
+explicit Duplicate feature may create a new envelope/document pair with new
+UUIDs.
+
+Local persistence is two logical caches:
+
+```text
+Envelope metadata cache                 Document content cache
+───────────────────────                 ──────────────────────
+envelope id                             document id
+document id ──────────────────────────> pages / drawings
+mailbox location                        cached revision
+header metadata                         cache metadata
+document revision
+```
+
+The caches have independent availability and retention. A restored envelope
+may exist while its Document is absent locally; this is a cache miss, not an
+invalid envelope. Selecting an envelope follows one App-owned resolution
+pipeline: load envelope by id, look up Document by `documentID`, require the
+cached revision to match, and only then validate and inject the Document into
+Editor. In the future, a missing or stale Document causes a backend fetch by
+`documentID`, followed by local persistence and the same validation pipeline.
+Fetch, persistence, or validation failure must leave the currently valid
+Editor Document unchanged. F-062 implements the local repository boundary and
+cache lookup only—no authentication, server request, sync, or network fallback.
+
+Deleting a local envelope removes the current user's local header. Its
+Document is cache data, not relationship-owned content: Storage may explicitly
+evict the corresponding local Document when no local envelope references it,
+but Core Data cascade ownership must not encode a future global deletion. On a
+backend, one user deleting a Sent entry must not delete the recipient's Inbox
+entry or the shared payload. Server retention and final payload garbage
+collection are separate future policies.
+
+After authentication and sync exist, reinstall/new-device recovery is
+metadata-first. The client fetches a mailbox manifest, recreates the four
+lists from envelope headers, and leaves Document payloads uncached until the
+user opens them. A manifest alone cannot recover handwriting that was never
+uploaded: cross-device Draft recovery therefore requires future Draft content
+sync, and the current local-only build makes no uninstall-recovery guarantee.
+
+The future backend should not store one global `mailboxLocation` directly on a
+shared envelope. Location belongs to a user-envelope membership because the
+same delivered letter can be `sent` for its sender and `inbox` for its
+recipient:
+
+```text
+Envelope        envelope UUID, document UUID, header, delivery metadata
+MailboxEntry    user UUID, envelope UUID, mailbox location
+DocumentPayload document UUID, revision, document content
+```
+
+The server mailbox-manifest response is the join of `MailboxEntry` and
+Envelope header data; it omits `DocumentPayload`. Full snapshots can rebuild a
+fresh device, while revisions/tombstones for efficient incremental sync are a
+future backend concern. The local single-user cache may keep
+`mailboxLocation` directly on `LetterEnvelope` because it is a projection of
+only the active user's mailbox.
+
+Storage owns local envelope/document persistence, UUID association, atomic
+draft creation, cache lookup/eviction, mailbox queries, timestamps, and local
+transitions. Library owns list/sidebar presentation and emits stable envelope
+ids. Social owns recipient/send eligibility and the Send Form. App owns
+envelope selection, Document resolution/validation, Editor injection, and
+transition ordering. Editor edits only the resolved Document. Envelope types
+remain in Storage rather than Shared merely because multiple modules consume
+Storage outputs.
+
+Legacy Documents are preserved in place. The schema migration creates one
+Draft envelope header for every existing Document id, copies the existing
+title into the envelope header, initializes local revision metadata, and does
+not rewrite Page order, drawing blobs, or drawing versions. After migration,
+public creation APIs must create an envelope/document pair rather than a new
+orphan Document.
+
+*Rejected:* sender/recipient/mailbox fields on Document; a required Core Data
+Envelope→Document relationship that cannot represent an uncached payload; one
+overloaded status combining mailbox and transport; four physical mailbox
+tables; list-specific envelope copies; dynamic Folder entities for the four
+system locations; eagerly downloading every Document during mailbox restore;
+deleting a shared backend payload as a side effect of one user's mailbox
+deletion; separate client and server UUIDs without a demonstrated need; and an
+email-complete model with archive/trash/spam/rules/threading before xmate needs
+those features.
 
 ### Writing top-bar coordination
 
