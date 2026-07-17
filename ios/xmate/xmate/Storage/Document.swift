@@ -18,6 +18,9 @@ public class Document: NSManagedObject {
     @NSManaged public var pagePresetID: String?
     @NSManaged public var logicalPageWidth: Double
     @NSManaged public var logicalPageHeight: Double
+    /// Monotonic version of the complete cached Document payload. This is
+    /// separate from each Page's drawing-write version.
+    @NSManaged public var contentRevision: Int64
     @NSManaged public var pages: NSOrderedSet
 }
 

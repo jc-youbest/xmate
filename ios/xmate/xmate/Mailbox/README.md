@@ -38,9 +38,8 @@ coordination).
 
 ## Next step (current stage)
 
-- Implement the Storage Core Data v3 envelope-record adapter and legacy
-  Document migration, then bridge those persistence primitives into a local
-  Mailbox repository without adding remote behavior.
+- Bridge Storage's completed Core Data v3 envelope-record and migration
+  primitives into a local Mailbox repository without adding remote behavior.
 
 ## Notes for AI changes
 

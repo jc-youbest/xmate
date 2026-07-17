@@ -117,9 +117,10 @@ page size/orientation, flow axis, presentation style, resolved policy, and
 the current bridged `PaperSize`; it is not observable state and does not
 select presets.
 
-Current persisted model: Core Data model version `xmate 2.xcdatamodel`
-adds `Document.pagePresetID`, `Document.logicalPageWidth`, and
-`Document.logicalPageHeight`. `Page` still stores only `id`,
+Current persisted model: Core Data model version `xmate 3.xcdatamodel`
+inherits the v2 `Document.pagePresetID`, `Document.logicalPageWidth`, and
+`Document.logicalPageHeight` fields and adds the mailbox persistence described
+under Document envelope boundary. `Page` still stores only `id`,
 `drawingData`, `version`, and its inverse `document` relationship. Flow
 axis is not persisted; it is reconstructed from the resolved page spec and
 layout policy. Legacy v1 documents may have nil or zero page-spec fields,
@@ -152,7 +153,7 @@ ambiguous. `SettingsStore` may own the global presentation preference
 and runtime environment, and `EditorLayoutContext` is the value SwiftUI
 views consume.
 
-Core Data migration stores document-level page-spec fields only:
+The v1→v2 page-spec migration stores these document-level fields only:
 `pagePresetID: String?`, `logicalPageWidth: Double`, and
 `logicalPageHeight: Double`. `PageSpec.flowAxis` remains runtime layout
 policy, not a persisted field in this increment; it is reconstructed from
@@ -639,6 +640,20 @@ title into the envelope header, initializes local revision metadata, and does
 not rewrite Page order, drawing blobs, or drawing versions. After migration,
 public creation APIs must create an envelope/document pair rather than a new
 orphan Document.
+
+The current local implementation is Core Data model version
+`xmate 3.xcdatamodel`. It adds independent `LetterEnvelopeRecord` records and
+`Document.contentRevision`; there is deliberately no Core Data relationship
+between them. Storage uses automatic inferred lightweight migration from v2,
+then runs an idempotent post-load backfill that creates a Draft / `notSubmitted`
+envelope only for a Document UUID not already represented. New local drafts
+save the envelope, Document, and first Page in one view-context transaction.
+Every accepted structural or drawing-content write increments
+`Document.contentRevision` and copies that value and the same `updatedAt` into
+the matching envelope in the same context save. Rejected stale drawing writes
+do not advance either revision. The migration path is covered with an actual
+v2 SQLite fixture so page order, drawing bytes, drawing versions, paper fields,
+and timestamps are checked after opening through the v3 store.
 
 *Rejected:* sender/recipient/mailbox fields on Document; a required Core Data
 Envelope→Document relationship that cannot represent an uncached payload; one

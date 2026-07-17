@@ -4,9 +4,11 @@
 
 - Core Data stack (store file in `Library/Application Support/`,
   app-private).
-- Entities: Document (id, title, timestamps, ordered pages, document-level
-  page preset id and logical page dimensions), Page (id, drawingData blob,
-  version).
+- Core Data v3 entities: Document (id, title, timestamps, ordered pages,
+  document-level page preset id, logical page dimensions, content revision),
+  Page (id, drawingData blob, version), and independent
+  LetterEnvelopeRecord metadata joined to Document by UUID rather than a Core
+  Data relationship.
 - Document lookup/creation (`loadOrCreateDocument(named:)`, plus a typed
   preset creation path for App-owned document selection), page
   add/delete/reset, and drawing load/save:
@@ -16,16 +18,18 @@
     stored version is dropped (backstop against stale canvases).
 - StrokeSerializer: PKDrawing ⇄ Data (thin today; later schema version /
   compression / encryption).
-- Future F-062 persistence adapter: raw envelope metadata records, migration,
-  and atomic local primitives. Mailbox owns envelope lifecycle, mailbox query
-  semantics, cache resolution, and the future remote repository boundary; see
-  `docs/architecture.md` (Document envelope boundary and Mailbox component
-  coordination).
+- F-062 persistence adapter: raw envelope metadata records, automatic
+  lightweight v2→v3 migration followed by idempotent legacy Draft backfill,
+  and atomic local creation/revision primitives. Mailbox owns envelope
+  lifecycle, mailbox query semantics, cache resolution, and the future remote
+  repository boundary; see `docs/architecture.md` (Document envelope boundary
+  and Mailbox component coordination).
 
 ## Key files
 
 - `NoteStore.swift`, `Document.swift`, `Page.swift`,
-  `StrokeSerializer.swift`, `xmate.xcdatamodeld`
+  `LetterEnvelopeRecord.swift`, `StrokeSerializer.swift`,
+  `xmate.xcdatamodeld`
 
 ## Not responsible for
 
@@ -37,8 +41,8 @@
 
 ## Next step (current stage)
 
-- Implement the Core Data v3 envelope-record adapter only after the F-062
-  Mailbox domain and repository contracts are covered by focused tests.
+- Bridge the raw v3 persistence primitives into the local Mailbox repository;
+  keep networking, authentication, sync, and remote delivery out of F-062.
 
 ## Notes for AI changes
 

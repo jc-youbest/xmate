@@ -24,37 +24,147 @@ final class NoteStore: ObservableObject {
         qos: .utility
     )
 
-    private init() {
+    private convenience init() {
+        self.init(storeURL: Self.defaultStoreURL())
+    }
+
+    /// Internal initializer used by persistence and migration tests with an
+    /// isolated store. Production uses the app-private default URL above.
+    init(storeURL: URL, storeType: String = NSSQLiteStoreType) {
         container = NSPersistentContainer(name: "xmate")
 
-        // Route the persistent store into Library/Application Support/
-        // so it's app-private and invisible to the Files app.
-        let appSupport = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(
-            at: appSupport,
-            withIntermediateDirectories: true
-        )
-        let storeURL = appSupport.appendingPathComponent("xmate.sqlite")
+        if storeType == NSSQLiteStoreType {
+            try? FileManager.default.createDirectory(
+                at: storeURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        }
 
         let description = NSPersistentStoreDescription(url: storeURL)
+        description.type = storeType
         description.shouldInferMappingModelAutomatically = true
         description.shouldMigrateStoreAutomatically = true
         container.persistentStoreDescriptions = [description]
 
+        var storeLoadError: Error?
         container.loadPersistentStores { _, error in
-            if let error {
-                // Store load failure during development is a bug, not a
-                // runtime condition we recover from.
-                fatalError("NoteStore failed to load store: \(error)")
-            }
+            storeLoadError = error
+        }
+        if let storeLoadError {
+            fatalError("NoteStore failed to load store: \(storeLoadError)")
         }
 
         container.viewContext.automaticallyMergesChangesFromParent = true
+
+        do {
+            try Self.backfillLegacyEnvelopeRecords(in: container.viewContext)
+        } catch {
+            fatalError("NoteStore failed to prepare envelope records: \(error)")
+        }
     }
 
     var viewContext: NSManagedObjectContext {
         container.viewContext
+    }
+
+    private static func defaultStoreURL() -> URL {
+        // Route the persistent store into Library/Application Support/ so it
+        // stays app-private and invisible to the Files app.
+        FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("xmate.sqlite")
+    }
+
+    // MARK: - Envelope persistence primitives (F-062)
+
+    /// Idempotently wraps every legacy orphan Document in Draft envelope
+    /// metadata. The Document/Page objects and drawing blobs are never copied
+    /// or normalized.
+    private static func backfillLegacyEnvelopeRecords(
+        in context: NSManagedObjectContext
+    ) throws {
+        let documents = try context.fetch(Document.fetchRequest())
+        let existingEnvelopes = try context.fetch(
+            LetterEnvelopeRecord.fetchRequest()
+        )
+        var representedDocumentIDs = Set(
+            existingEnvelopes.compactMap(\.documentID)
+        )
+
+        for document in documents {
+            let documentID: UUID
+            if let existingID = document.id {
+                documentID = existingID
+            } else {
+                let generatedID = UUID()
+                document.id = generatedID
+                documentID = generatedID
+            }
+
+            guard representedDocumentIDs.insert(documentID).inserted else {
+                continue
+            }
+
+            let createdAt = document.createdAt ?? Date()
+            let updatedAt = document.updatedAt ?? createdAt
+            let envelope = LetterEnvelopeRecord(context: context)
+            envelope.id = UUID()
+            envelope.documentID = documentID
+            envelope.title = document.title ?? ""
+            envelope.senderID = nil
+            envelope.recipientID = nil
+            envelope.mailboxLocationRawValue = "draft"
+            envelope.deliveryStateRawValue = "notSubmitted"
+            envelope.documentRevision = max(document.contentRevision, 0)
+            envelope.createdAt = createdAt
+            envelope.updatedAt = updatedAt
+            envelope.sentAt = nil
+            envelope.receivedAt = nil
+        }
+
+        if context.hasChanges {
+            try context.save()
+        }
+    }
+
+    func envelopeRecords(
+        mailboxLocationRawValue: String? = nil
+    ) throws -> [LetterEnvelopeRecord] {
+        let request = LetterEnvelopeRecord.fetchRequest()
+        if let mailboxLocationRawValue {
+            request.predicate = NSPredicate(
+                format: "mailboxLocationRawValue == %@",
+                mailboxLocationRawValue
+            )
+        }
+        request.sortDescriptors = [
+            NSSortDescriptor(key: "updatedAt", ascending: false),
+        ]
+        return try viewContext.fetch(request)
+    }
+
+    func envelopeRecord(id: UUID) throws -> LetterEnvelopeRecord? {
+        let request = LetterEnvelopeRecord.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try viewContext.fetch(request).first
+    }
+
+    func envelopeRecord(documentID: UUID) throws -> LetterEnvelopeRecord? {
+        let request = LetterEnvelopeRecord.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "documentID == %@",
+            documentID as CVarArg
+        )
+        request.fetchLimit = 1
+        return try viewContext.fetch(request).first
+    }
+
+    func document(id: UUID) throws -> Document? {
+        let request = Document.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try viewContext.fetch(request).first
     }
 
     // MARK: - Document lookup / creation
@@ -110,8 +220,15 @@ final class NoteStore: ObservableObject {
             let any = NSFetchRequest<Document>(entityName: "Document")
             any.fetchLimit = 1
             if let legacy = try? viewContext.fetch(any).first {
+                let now = Date()
                 legacy.title = name
-                try? viewContext.save()
+                legacy.updatedAt = now
+                if let documentID = legacy.id,
+                   let envelope = try? envelopeRecord(documentID: documentID) {
+                    envelope.title = name
+                    envelope.updatedAt = now
+                }
+                saveViewContextOrFail(operation: "adopt legacy document")
                 return legacy
             }
         }
@@ -128,11 +245,14 @@ final class NoteStore: ObservableObject {
         pageSpec: PageSpec,
         presetID: String?
     ) -> Document {
+        let now = Date()
+        let documentID = UUID()
         let doc = Document(context: viewContext)
-        doc.id = UUID()
+        doc.id = documentID
         doc.title = name
-        doc.createdAt = Date()
-        doc.updatedAt = Date()
+        doc.createdAt = now
+        doc.updatedAt = now
+        doc.contentRevision = 0
         doc.applyPageSpec(pageSpec, presetID: presetID)
 
         let page = Page(context: viewContext)
@@ -142,8 +262,31 @@ final class NoteStore: ObservableObject {
 
         doc.pages = NSOrderedSet(object: page)
 
-        try? viewContext.save()
+        let envelope = LetterEnvelopeRecord(context: viewContext)
+        envelope.id = UUID()
+        envelope.documentID = documentID
+        envelope.title = name
+        envelope.senderID = nil
+        envelope.recipientID = nil
+        envelope.mailboxLocationRawValue = "draft"
+        envelope.deliveryStateRawValue = "notSubmitted"
+        envelope.documentRevision = 0
+        envelope.createdAt = now
+        envelope.updatedAt = now
+        envelope.sentAt = nil
+        envelope.receivedAt = nil
+
+        saveViewContextOrFail(operation: "create draft envelope and document")
         return doc
+    }
+
+    private func saveViewContextOrFail(operation: String) {
+        do {
+            try viewContext.save()
+        } catch {
+            viewContext.rollback()
+            fatalError("NoteStore failed to \(operation): \(error)")
+        }
     }
 
     /// Return the first page of the given document.
@@ -165,6 +308,7 @@ final class NoteStore: ObservableObject {
     /// Append a new blank page at the end of the document and return it.
     @discardableResult
     func appendPage(to document: Document) -> Page {
+        let now = Date()
         let page = Page(context: viewContext)
         page.id = UUID()
         page.drawingData = nil
@@ -173,26 +317,28 @@ final class NoteStore: ObservableObject {
         let mutable = document.pages.mutableCopy() as! NSMutableOrderedSet
         mutable.add(page)
         document.pages = mutable as NSOrderedSet
-        document.updatedAt = Date()
-        try? viewContext.save()
+        markDocumentContentChangedOrFail(document, at: now)
+        saveViewContextOrFail(operation: "append page")
         return page
     }
 
     /// Remove a page from the document. The caller must ensure at least one
     /// page will remain — enforced by the UI (delete page disabled when count == 1).
     func deletePage(_ page: Page, from document: Document) {
+        let now = Date()
         let mutable = document.pages.mutableCopy() as! NSMutableOrderedSet
         mutable.remove(page)
         document.pages = mutable as NSOrderedSet
-        document.updatedAt = Date()
         viewContext.delete(page)
-        try? viewContext.save()
+        markDocumentContentChangedOrFail(document, at: now)
+        saveViewContextOrFail(operation: "delete page")
     }
 
     /// Delete all pages and recreate a single blank page.
-    /// v1 placeholder for F-011 "delete document" — in v3 this will
-    /// dismiss to the note list instead.
+    /// v1 placeholder for F-011 "delete document" — once the Library document
+    /// manager lands, this will dismiss to the list instead.
     func resetDocument(_ document: Document) {
+        let now = Date()
         let allPages = pages(of: document)
         for page in allPages {
             viewContext.delete(page)
@@ -202,8 +348,45 @@ final class NoteStore: ObservableObject {
         blank.drawingData = nil
         blank.version = 0
         document.pages = NSOrderedSet(object: blank)
-        document.updatedAt = Date()
-        try? viewContext.save()
+        markDocumentContentChangedOrFail(document, at: now)
+        saveViewContextOrFail(operation: "reset document")
+    }
+
+    private func markDocumentContentChangedOrFail(
+        _ document: Document,
+        at date: Date
+    ) {
+        do {
+            try Self.markDocumentContentChanged(
+                document,
+                at: date,
+                in: viewContext
+            )
+        } catch {
+            viewContext.rollback()
+            fatalError("NoteStore failed to update document revision: \(error)")
+        }
+    }
+
+    private static func markDocumentContentChanged(
+        _ document: Document,
+        at date: Date,
+        in context: NSManagedObjectContext
+    ) throws {
+        document.updatedAt = date
+        document.contentRevision += 1
+
+        guard let documentID = document.id else { return }
+        let request = LetterEnvelopeRecord.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "documentID == %@",
+            documentID as CVarArg
+        )
+        request.fetchLimit = 1
+        if let envelope = try context.fetch(request).first {
+            envelope.documentRevision = document.contentRevision
+            envelope.updatedAt = date
+        }
     }
 
     // MARK: - Drawing persistence
@@ -269,7 +452,17 @@ final class NoteStore: ObservableObject {
         }
         page.drawingData = data
         page.version = version
-        page.document?.updatedAt = Date()
-        try? ctx.save()
+        do {
+            if let document = page.document {
+                try markDocumentContentChanged(
+                    document,
+                    at: Date(),
+                    in: ctx
+                )
+            }
+            try ctx.save()
+        } catch {
+            assertionFailure("NoteStore failed to persist drawing: \(error)")
+        }
     }
 }
