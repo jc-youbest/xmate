@@ -5,29 +5,40 @@ each module's README next to its code (`ios/xmate/xmate/<Module>/README.md`).
 
 ## Layering
 
-                    App
-              ┌─────┼─────┐
-              ↓     ↓     ↓
-           Editor Library Social
-              └─────┼─────┘
-                    ↓
-                 Storage       Shared: small cross-module types
+    App → Editor ─────────→ Storage
+    App → Library → Mailbox → Storage
+    App → Social
+    App → Mailbox
+
+    Shared: small cross-module types
 
 - **App** (`App/`) — entry layer: `@main`, RootView (composition root),
   global settings, and cross-component flow coordination. Depends on
   modules; no module ever imports from it.
 - **Editor** (`Editor/`) — Content Screen: pagination, zoom, the
   PencilKit writing stack. Edits exactly the document it is given.
-- **Storage** (`Storage/`) — Core Data store, Document/Page content cache,
-  LetterEnvelope metadata cache, and load/save/query APIs. Knows nothing about
-  UI, navigation, or remote transport.
+- **Mailbox** (`Mailbox/`, introduced by F-062) — letter/mailbox data
+  component: owns envelope lifecycle, the four system mailbox locations,
+  local cache resolution, and the future local/remote repository boundary. It
+  has no UI and never opens Editor.
+- **Storage** (`Storage/`) — Core Data implementation for raw envelope metadata
+  and Document/Page content persistence, migrations, and atomic local
+  operations. Knows nothing about UI, navigation, or remote transport.
 - **Library** (`Library/`) — placeholder; personal collection and mailbox
-  list/query UI lands in v3. Emits selection intents; it does not open Editor.
+  list/sidebar UI lands in v3. Consumes Mailbox outputs and emits selection
+  intents; it does not open Editor.
 - **Social** (`Social/`) — the current structural Social Screen shell; future
   send form, pen-pal, and delivery behavior. It emits typed intents and does
   not embed or call Editor.
 - **Shared** (`Shared/`) — truly cross-module small types only
   (currently `PaginationStyle`, `Comparable.clamped`). Not a junk drawer.
+
+Dependency arrows remain one-way: Editor uses Storage for authoritative page
+and drawing persistence; Mailbox uses Storage for local records; Library uses
+Mailbox for mailbox presentation data; App composes all components and invokes
+Mailbox resolution for cross-component flows. Editor never imports Mailbox or
+Library. Envelope/domain types stay with Mailbox and its persistence boundary,
+not Shared merely because several components exchange stable ids.
 
 ## Xcode project
 
@@ -609,14 +620,16 @@ future backend concern. The local single-user cache may keep
 `mailboxLocation` directly on `LetterEnvelope` because it is a projection of
 only the active user's mailbox.
 
-Storage owns local envelope/document persistence, UUID association, atomic
-draft creation, cache lookup/eviction, mailbox queries, timestamps, and local
-transitions. Library owns list/sidebar presentation and emits stable envelope
-ids. Social owns recipient/send eligibility and the Send Form. App owns
-envelope selection, Document resolution/validation, Editor injection, and
-transition ordering. Editor edits only the resolved Document. Envelope types
-remain in Storage rather than Shared merely because multiple modules consume
-Storage outputs.
+Storage owns the Core Data schema, migrations, raw envelope/document records,
+and atomic persistence primitives. Mailbox owns the semantic operations built
+on those primitives: UUID association, atomic draft creation, mailbox queries,
+cache validity/eviction policy, local transitions, and the future remote
+repository boundary. Library owns list/sidebar presentation and emits stable
+envelope ids. Social owns recipient/send eligibility and the Send Form. App
+owns envelope selection, Document resolution/validation, Editor injection,
+and transition ordering. Editor edits only the resolved Document. Envelope
+domain vocabulary belongs to Mailbox rather than Shared; Storage-facing record
+representations must not create a dependency cycle back into Mailbox.
 
 Legacy Documents are preserved in place. The schema migration creates one
 Draft envelope header for every existing Document id, copies the existing
@@ -634,6 +647,75 @@ deleting a shared backend payload as a side effect of one user's mailbox
 deletion; separate client and server UUIDs without a demonstrated need; and an
 email-complete model with archive/trash/spam/rules/threading before xmate needs
 those features.
+
+### Mailbox component coordination
+
+Mailbox is a non-UI data component between presentation/coordinator modules
+and Storage. It exists so envelope organization, local cache behavior, and
+future server interaction do not leak into Editor, Library views, App routes,
+or raw Core Data APIs. Its public surface returns stable value snapshots and
+typed results rather than exposing navigation side effects or requiring a
+caller to hold managed objects across asynchronous work.
+
+Mailbox owns:
+
+- `LetterEnvelope` domain/header values and stable envelope/document ids;
+- the fixed Inbox/Drafts/Outbox/Sent query vocabulary;
+- envelope lifecycle and legal local transitions;
+- local envelope-manifest and Document-cache coordination;
+- cache hit, miss, stale-revision, eviction, and resolution policy;
+- the future remote manifest and Document-payload source boundary.
+
+Mailbox does not own SwiftUI, Editor canvas state, App navigation, window
+orientation, Send Form presentation, PencilKit drawing handoffs, or Core Data
+migration mechanics. Storage remains the local persistence implementation.
+No remote implementation is created in F-062; the boundary is introduced only
+where current local behavior requires it.
+
+Library owns the mailbox sidebar UI. It asks Mailbox for presentation-ready
+envelope summaries, displays the four system locations, and emits typed intents
+such as `selectMailbox`, `selectEnvelope(envelopeID:)`, and `closeSidebar`.
+Library does not fetch a Document, construct Editor, or change the workspace.
+The UI may label the four locations as folders, but no Folder domain entity is
+implied.
+
+Editor remains mailbox-blind. A WritingTopBar control may produce Editor output
+such as `showMailbox` or `showSendForm`; Editor never queries Envelope records,
+imports Library, calls Mailbox, or downloads content. It continues to edit only
+the validated Document App injects and to own its drawing/viewport lifecycle.
+
+App is the sole cross-component coordinator. The sidebar-selection flow is:
+
+```text
+Library emits selectEnvelope(envelopeID)
+→ App asks Editor to settle conflicting operations and flush drawing
+→ App asks Mailbox to resolve the envelope's Document
+→ Mailbox checks documentID and cached revision through Storage
+→ local hit returns the cached Document
+→ future miss/stale result may hydrate through a remote source, then persist
+→ App validates the resolved Document
+→ App replaces the Editor selection only after successful validation
+```
+
+The future remote step is inert in the local build. A local miss is a typed
+resolution failure, not a fabricated blank Document. Any flush, resolution,
+persistence, or validation failure leaves the current valid Editor Document in
+place. While the mailbox sidebar is visible, a successful selection updates
+Editor content without committing a new App window orientation, as defined in
+Editor Workspace accessories below.
+
+Social owns Send Form UI and eligibility rules, then emits a typed save/queue
+intent. App invokes the matching Mailbox operation after completing the Editor
+drawing handoff. Social does not mutate Storage or call Mailbox directly, and
+Mailbox does not present Social UI. This preserves App as the integration
+point rather than turning the data component into a sibling-component
+coordinator.
+
+*Rejected:* putting envelope/folder/cache/network behavior in Editor; letting
+the Library sidebar open or mutate Editor directly; putting SwiftUI sidebar UI
+inside Mailbox; making Storage coordinate server requests; direct
+Social→Mailbox delivery mutations; and a generic backend component whose scope
+extends beyond letter/mailbox data.
 
 ### Writing top-bar coordination
 
