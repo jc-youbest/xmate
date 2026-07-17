@@ -18,7 +18,8 @@
 
 - App navigation and active window policy.
 - Document editing or persistence details.
-- Mailbox/envelope persistence and delivery rules until their features begin.
+- Mailbox/envelope persistence, cache resolution, and local transitions
+  (Mailbox). Social emits eligibility/form intents; App invokes Mailbox.
 
 ## Next step (current stage)
 

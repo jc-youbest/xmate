@@ -20,8 +20,8 @@
 
 ## Not responsible for
 
-- Editing documents (Editor) or persistence internals (Storage — Library
-  consumes NoteStore APIs).
+- Editing documents (Editor), mailbox/cache rules (Mailbox), or persistence
+  internals (Storage). Library consumes presentation-ready Mailbox outputs.
 - App navigation and validation, plus recipient/send/delivery behavior
   (future Social).
 
@@ -32,6 +32,6 @@
 
 ## Notes for AI changes
 
-- Keep this module empty until v3 work explicitly starts. When it does,
-  selection flows emit stable ids to App; Library never constructs Editor and
-  Editor never learns about lists/inboxes.
+- When sidebar implementation begins, consume Mailbox summaries and emit stable
+  envelope ids to App. Library never constructs Editor, fetches Document
+  payloads, or teaches Editor about lists/inboxes.

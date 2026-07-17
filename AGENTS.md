@@ -56,14 +56,18 @@ Each module is a folder under `ios/xmate/xmate/` with its own README:
   Resolves WHICH document opens and injects it; nothing imports App.
 - **Editor/** — Content Screen: pagination, zoom, PencilKit writing
   stack. Edits only the injected document.
+- **Mailbox/** — non-UI letter/mailbox data component: envelope lifecycle,
+  fixed mailbox queries, local cache resolution, and the future remote
+  repository boundary.
 - **Storage/** — Core Data store, entities, drawing persistence. No UI.
 - **Library/** — placeholder until v3 (personal document manager).
 - **Shared/** — truly cross-module small types only (no junk drawer).
 - **Social/** — social-facing UI and typed component outputs; currently the
   F-055 structural screen shell, with concrete features deferred to v3+.
 
-Dependency arrows point one way: App → Editor → Storage; everything may
-use Shared; nothing imports App.
+Dependency arrows point one way: App → Editor → Storage; App → Library →
+Mailbox → Storage; App also coordinates Social and Mailbox directly.
+Everything may use Shared; nothing imports App.
 
 ## Conventions
 

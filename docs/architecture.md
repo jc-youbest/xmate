@@ -549,11 +549,13 @@ without changing the meaning of `mailboxLocation`.
 
 Mailbox location and delivery state remain orthogonal. Location answers where
 the current user's header is listed; delivery state answers what has happened
-to outgoing transport. The local Send action may change an eligible draft to
-`outbox` plus the smallest queued delivery value, but it must not move it to
-`sent` or claim remote success. Do not pre-build sending, retry, delivered, or
-failure state machines for F-062. Deterministic Inbox/Sent development records
-are seed history, not evidence produced by the local Send action.
+to outgoing transport. F-062 uses only `notSubmitted`, `queued`, and `unknown`:
+the last value represents restored or deterministic history whose transport
+outcome the local build did not observe. The local Send action may change an
+eligible draft to `outbox` plus `queued`, but it must not move it to `sent` or
+claim remote success. Do not pre-build sending, retry, delivered, or failure
+state machines for F-062. Deterministic Inbox/Sent development records are seed
+history, not evidence produced by the local Send action.
 
 A locally created draft is one atomic Storage operation: create its envelope,
 its Document, and the Document's first Page together. The objects are stored

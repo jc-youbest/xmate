@@ -16,9 +16,11 @@
     stored version is dropped (backstop against stale canvases).
 - StrokeSerializer: PKDrawing ⇄ Data (thin today; later schema version /
   compression / encryption).
-- Future: persisted document-envelope records and mailbox queries. Storage
-  owns schema/relationships only; envelope semantics and deferred decisions
-  are recorded in `docs/architecture.md` (Document envelope boundary).
+- Future F-062 persistence adapter: raw envelope metadata records, migration,
+  and atomic local primitives. Mailbox owns envelope lifecycle, mailbox query
+  semantics, cache resolution, and the future remote repository boundary; see
+  `docs/architecture.md` (Document envelope boundary and Mailbox component
+  coordination).
 
 ## Key files
 
@@ -30,14 +32,13 @@
 - Any UI concept: pagination styles, zoom, tool picker, screens. Storage
   must compile without importing SwiftUI/PencilKit UI types.
 - Deciding which document the app opens (App layer).
-- App routes, mailbox presentation, recipient/send eligibility, or delivery
-  transitions.
+- App routes, mailbox presentation, recipient/send eligibility, mailbox/cache
+  coordination, remote transport, or delivery transitions.
 
 ## Next step (current stage)
 
-- Later: stationery entities and Library/new-document APIs. Add envelope
-  persistence only when its ownership/snapshot and deletion rules are settled
-  and the first Library/Social feature requires it.
+- Implement the Core Data v3 envelope-record adapter only after the F-062
+  Mailbox domain and repository contracts are covered by focused tests.
 
 ## Notes for AI changes
 

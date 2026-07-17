@@ -31,8 +31,8 @@
   editor/orientation bridge are not loaded.
 - Global user preferences (SettingsStore, UserDefaults-backed).
 - Top-level switching between the Social Screen shell and Content Screen;
-  future entry flows from inbox / drafts / new creation resolve a Document
-  and hand it to the editor.
+  future entry flows from Inbox / Drafts resolve an envelope through Mailbox,
+  validate the resulting cached Document, and hand it to the editor.
 
 ## Key files
 
@@ -48,8 +48,8 @@
 
 ## Not responsible for
 
-- Editing documents (Editor), persistence details (Storage), document
-  list UI (Library, v3).
+- Editing documents (Editor), persistence details (Storage), mailbox/cache
+  rules (Mailbox), or document list UI (Library, v3).
 - Editor transaction state, toolbar panels, social delivery rules, or mailbox
   query/presentation details.
 

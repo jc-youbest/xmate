@@ -36,6 +36,7 @@
 				App/README.md,
 				Editor/README.md,
 				Library/README.md,
+				Mailbox/README.md,
 				Shared/README.md,
 				Social/README.md,
 				Storage/README.md,
