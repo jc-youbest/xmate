@@ -24,6 +24,8 @@ struct WritingTopBar: View {
     /// Current zoom percentage while zoomed (e.g. 153), nil at fit (F-053).
     /// Non-nil shows ZoomResetButton.
     let zoomPercent: Int?
+    /// Ask App to present Library's mailbox sidebar.
+    let onShowMailbox: () -> Void
     /// Leave the Content Screen through an App-coordinated typed intent.
     let onShowSocial: () -> Void
     /// Tap on ZoomResetButton — restores 100% (fit).
@@ -36,6 +38,16 @@ struct WritingTopBar: View {
     var body: some View {
         HStack(spacing: 0) {
 
+            Button(action: onShowMailbox) {
+                Image(systemName: "tray.full")
+                    .imageScale(.large)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+            .accessibilityLabel("Mailbox")
+            .padding(.leading, 4)
+
             Button(action: onShowSocial) {
                 Image(systemName: "person.2")
                     .imageScale(.large)
@@ -44,7 +56,6 @@ struct WritingTopBar: View {
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
             .accessibilityLabel("Social")
-            .padding(.leading, 4)
 
             // PageIndicator
             Text("\(currentIndex + 1) / \(pageCount)")
@@ -128,6 +139,7 @@ struct WritingTopBar: View {
             ),
             paginationStyle: .constant(.singlePage),
             zoomPercent: 153,
+            onShowMailbox: {},
             onShowSocial: {},
             onResetZoom: {},
             onAddPage: {},

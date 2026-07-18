@@ -168,6 +168,7 @@ struct WritingScreen: View {
                     layoutContext: layoutContext,
                     paginationStyle: $settings.paginationStyle,
                     zoomPercent: topBarZoomPercent,
+                    onShowMailbox: handleShowMailbox,
                     onShowSocial: handleShowSocial,
                     onResetZoom: resetZoom,
                     onAddPage: handleAddPage,
@@ -541,6 +542,22 @@ struct WritingScreen: View {
     }
 
     // MARK: - Page CRUD (F-051)
+
+    private func handleShowMailbox() {
+        guard mutationPhase == .idle,
+              editorOperationPhase == .idle,
+              currentEditorViewportState == .normal else {
+            logEditorOperation(
+                "Show Mailbox ignored until Editor viewport is settled "
+                    + "mutation=\(mutationPhase) operation=\(editorOperationPhase) "
+                    + "viewport=\(currentEditorViewportState)"
+            )
+            return
+        }
+
+        DrawingSessionManager.shared.flushForMailboxBrowsing()
+        onOutput(.showMailbox)
+    }
 
     private func handleShowSocial() {
         guard mutationPhase == .idle,

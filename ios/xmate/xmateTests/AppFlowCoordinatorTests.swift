@@ -227,8 +227,8 @@ struct AppFlowCoordinatorTests {
         #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
         #expect(appliedPolicies == [initialComponentPolicy])
 
-        let outcome = coordinator.selectMailboxEnvelope(
-            id: envelope.id,
+        let outcome = coordinator.handleMailboxSidebarOutput(
+            .selectEnvelope(id: envelope.id),
             resolveEnvelope: { _ in self.hitResolution(envelope) },
             resolveCachedDocument: { try store.document(id: $0) }
         )

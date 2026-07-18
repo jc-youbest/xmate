@@ -24,11 +24,25 @@ final class xmateUITests: XCTestCase {
 
     @MainActor
     func testExample() throws {
-        // UI tests must launch the application that they test.
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        let mailboxButton = app.buttons["Mailbox"]
+        XCTAssertTrue(mailboxButton.waitForExistence(timeout: 5))
+        mailboxButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Mailbox"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Inbox"].exists)
+        XCTAssertTrue(app.buttons["Drafts"].exists)
+        XCTAssertTrue(app.buttons["Outbox"].exists)
+        XCTAssertTrue(app.buttons["Sent"].exists)
+
+        let closeButton = app.buttons["Close Mailbox"]
+        XCTAssertTrue(closeButton.exists)
+        closeButton.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).tap()
+        XCTAssertTrue(closeButton.waitForNonExistence(timeout: 2))
     }
 
     @MainActor

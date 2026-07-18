@@ -1,6 +1,6 @@
 # Library — personal document manager (placeholder)
 
-## Responsibilities (future, v3)
+## Responsibilities
 
 - Personal document/mailbox lists with thumbnails: drafts, inbox, outbox, and
   sent letters.
@@ -10,14 +10,16 @@
 - System-responsive adaptive layout: Library owns its portrait/landscape UI for
   the viewport supplied by iPadOS. App applies that component policy; Library
   does not request a window orientation or affect another component.
-- Future: provide mailbox sidebar content for App's Editor Workspace. In that
+- Provide mailbox sidebar content for App's Editor Workspace. In that
   presentation it inherits the outer Editor policy and emits selection intents;
   it does not resize or call Editor directly.
 
 ## Key files
 
-- `MailboxSidebarOutputIntent.swift` — typed sidebar close request consumed by
-  App; Library never changes workspace state directly
+- `MailboxSidebarView.swift` — four-location mailbox navigation and local
+  Envelope-summary list
+- `MailboxSidebarOutputIntent.swift` — typed close and stable Envelope-selection
+  requests consumed by App; Library never changes workspace state directly
 
 ## Not responsible for
 
@@ -28,8 +30,8 @@
 
 ## Next step (current stage)
 
-- Implement the F-062 mailbox sidebar shell using App's completed accessory
-  presentation state. Consume Mailbox values and emit stable envelope ids only.
+- Add user-facing typed selection/load failure presentation after primary-iPad
+  verification of the sidebar shell.
 
 ## Notes for AI changes
 

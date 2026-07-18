@@ -46,6 +46,8 @@
 - `xmateApp.swift` — `@main`; hosts RootView
 - `RootView.swift` — composition root; renders coordinator destinations and
   supplies the current development-document resolver
+- `EditorWorkspace.swift` — stable App-owned Library/Editor sibling layout and
+  mailbox interaction suspension policy
 - `AppFlowCoordinator.swift` — typed App route/state and document-open pipeline
 - `DocumentOpenValidation.swift` — pre-editor document validation and
   document-open error codes
@@ -62,8 +64,8 @@
 
 ## Next step (current stage)
 
-- Compose the Library mailbox sidebar beside the still-mounted Editor and wire
-  the top-bar trigger, close intent, and ordered viewport resize transaction.
+- Present typed mailbox selection failures and harden the first non-writing
+  sidebar handoff on the primary iPad before adding remote cache hydration.
 
 ## Notes for AI changes
 

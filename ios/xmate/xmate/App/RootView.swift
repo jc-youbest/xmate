@@ -103,13 +103,27 @@ struct RootView: View {
     ) -> some View {
         switch destination {
         case .editor(let editorDestination):
-            WritingScreen(
-                document: editorDestination.document,
-                onOutput: coordinator.handleEditorOutput
+            EditorWorkspace(
+                destination: editorDestination,
+                accessory: coordinator.editorWorkspaceAccessory,
+                repository: LocalMailboxRepository(store: store),
+                onEditorOutput: coordinator.handleEditorOutput,
+                onMailboxOutput: handleMailboxSidebarOutput
             )
         case .social:
             SocialScreen(onOutput: coordinator.handleSocialOutput)
         }
+    }
+
+    private func handleMailboxSidebarOutput(
+        _ intent: MailboxSidebarOutputIntent
+    ) {
+        let repository = LocalMailboxRepository(store: store)
+        _ = coordinator.handleMailboxSidebarOutput(
+            intent,
+            resolveEnvelope: repository.resolveEnvelope,
+            resolveCachedDocument: store.document
+        )
     }
 
     private var devDocumentOpenRequest: DocumentOpenRequest {

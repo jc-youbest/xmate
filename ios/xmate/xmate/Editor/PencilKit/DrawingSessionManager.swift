@@ -403,6 +403,14 @@ final class DrawingSessionManager {
         flushAllActive()
     }
 
+    /// Editor-owned handoff before App contracts the workspace for mailbox
+    /// browsing. The first sidebar implementation suspends Editor interaction
+    /// while open, so this flush freezes the authoritative drawing state used
+    /// by any subsequent envelope selection.
+    func flushForMailboxBrowsing() {
+        flushAllActive()
+    }
+
     // MARK: - Save gating
 
     /// Coordinator forwards every `canvasViewDrawingDidChange` here. Only the

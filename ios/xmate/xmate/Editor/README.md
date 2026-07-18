@@ -26,10 +26,10 @@
   interface orientation while this component is active. Editor owns its own
   layout inside the actual viewport and never makes window-orientation requests
   or affects another component.
-- Future workspace integration: Editor may receive a reduced viewport when App
-  presents a mailbox sidebar, or be suspended beneath a floating Send Form.
-  App owns composition; Editor owns the ordered viewport/canvas/ToolPicker
-  transaction described in `docs/architecture.md` (Editor Workspace
+- Workspace integration: App may assign Editor a reduced viewport for a mailbox
+  sidebar. The first safe implementation flushes drawings and suspends Editor
+  interaction while browsing; a future floating Send Form uses the same
+  App-owned composition boundary. See `docs/architecture.md` (Editor Workspace
   accessories).
 - Model/ and Configuration/: v2 editor vocabulary. PageSpec / PageSize /
   LayoutPolicy now provide the current A4 portrait default plus data-only A4
@@ -80,9 +80,8 @@
 
 In priority order:
 
-- F-062 Editor Workspace — after App composes the real Library sidebar, wire a
-  top-bar action to `.showMailbox` and perform the ordered viewport resize
-  handoff. Do not expose a dead mailbox control before that composition exists.
+- F-062 Editor Workspace — verify the non-writing mailbox sidebar handoff,
+  current-page continuity, and ToolPicker restoration on the primary iPad.
 - F-059 zoom-pan physics — add inertia + edge rubber-band to the zoomed
   finger pan (today it stops dead on finger-up, no bounce).
 - F-060 top-bar dead while zoomed — taps on WritingTopBar raise the
@@ -111,9 +110,9 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   viewport/page/PencilKit state. Before `.showSocial`, WritingScreen rejects a
   pending structural operation and synchronously flushes authoritative
   drawings; preserve that departure boundary for future component intents.
-- `.showMailbox` is now part of the Editor output vocabulary but has no visible
-  trigger until the Library sidebar composition lands. Opening a sidebar keeps
-  Editor mounted and is not a component-departure flush.
+- `.showMailbox` is emitted by the visible top-bar mailbox control only from an
+  idle, normal viewport. Opening synchronously flushes authoritative drawings;
+  App keeps Editor mounted but disables its hit testing until sidebar dismissal.
 - Keep WritingTopBar presentational: WritingScreen interprets typed local
   actions and converts only component-exit requests into App-facing output.
 - Structural editor operations require a normal viewport. If Add Page, Delete

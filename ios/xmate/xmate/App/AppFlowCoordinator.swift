@@ -143,12 +143,17 @@ final class AppFlowCoordinator: ObservableObject {
         }
     }
 
-    func handleMailboxSidebarOutput(_ intent: MailboxSidebarOutputIntent) {
+    @discardableResult
+    func handleMailboxSidebarOutput(
+        _ intent: MailboxSidebarOutputIntent,
+        resolveEnvelope: (UUID) throws -> MailboxEnvelopeDocumentResolution? = { _ in nil },
+        resolveCachedDocument: (UUID) throws -> Document? = { _ in nil }
+    ) -> MailboxEnvelopeSelectionOutcome? {
         switch intent {
         case .closeSidebar:
             guard editorWorkspaceAccessory == .mailboxSidebar,
                   case .ready(.editor(let destination)) = state else {
-                return
+                return nil
             }
 
             let committedPolicy = ComponentWindowLayoutPolicy.documentDirected(
@@ -163,6 +168,14 @@ final class AppFlowCoordinator: ObservableObject {
             )
             present(.editor(committedDestination))
             editorWorkspaceAccessory = nil
+            return nil
+
+        case .selectEnvelope(let id):
+            return selectMailboxEnvelope(
+                id: id,
+                resolveEnvelope: resolveEnvelope,
+                resolveCachedDocument: resolveCachedDocument
+            )
         }
     }
 
