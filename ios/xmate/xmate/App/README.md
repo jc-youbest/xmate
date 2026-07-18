@@ -33,6 +33,9 @@
   hit, rechecks the cached Document id/revision, and validates before replacing
   the Editor destination. Typed failures preserve the current Document, and a
   workspace selection keeps the current window policy until sidebar dismissal.
+- Editor Workspace accessory state is App-owned. Opening the mailbox keeps the
+  current route/policy; closing commits the selected Document's orientation
+  policy before returning to full-screen Editor.
 - Global user preferences (SettingsStore, UserDefaults-backed).
 - Top-level switching between the Social Screen shell and Content Screen;
   future entry flows from Inbox / Drafts resolve an envelope through Mailbox,
@@ -59,8 +62,8 @@
 
 ## Next step (current stage)
 
-- Add Editor Workspace accessory state and typed show/close-mailbox intents,
-  then compose the Library sidebar without moving its UI into Editor.
+- Compose the Library mailbox sidebar beside the still-mounted Editor and wire
+  the top-bar trigger, close intent, and ordered viewport resize transaction.
 
 ## Notes for AI changes
 

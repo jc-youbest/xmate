@@ -80,6 +80,9 @@
 
 In priority order:
 
+- F-062 Editor Workspace — after App composes the real Library sidebar, wire a
+  top-bar action to `.showMailbox` and perform the ordered viewport resize
+  handoff. Do not expose a dead mailbox control before that composition exists.
 - F-059 zoom-pan physics — add inertia + edge rubber-band to the zoomed
   finger pan (today it stops dead on finger-up, no bounce).
 - F-060 top-bar dead while zoomed — taps on WritingTopBar raise the
@@ -108,6 +111,9 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   viewport/page/PencilKit state. Before `.showSocial`, WritingScreen rejects a
   pending structural operation and synchronously flushes authoritative
   drawings; preserve that departure boundary for future component intents.
+- `.showMailbox` is now part of the Editor output vocabulary but has no visible
+  trigger until the Library sidebar composition lands. Opening a sidebar keeps
+  Editor mounted and is not a component-departure flush.
 - Keep WritingTopBar presentational: WritingScreen interprets typed local
   actions and converts only component-exit requests into App-facing output.
 - Structural editor operations require a normal viewport. If Add Page, Delete

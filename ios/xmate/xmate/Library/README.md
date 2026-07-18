@@ -16,7 +16,8 @@
 
 ## Key files
 
-- None yet — this README alone keeps the folder tracked.
+- `MailboxSidebarOutputIntent.swift` — typed sidebar close request consumed by
+  App; Library never changes workspace state directly
 
 ## Not responsible for
 
@@ -27,9 +28,8 @@
 
 ## Next step (current stage)
 
-- Implement the F-062 mailbox sidebar shell after App owns workspace accessory
-  presentation and Editor emits typed show/close intents. Consume Mailbox
-  values and emit stable envelope ids only.
+- Implement the F-062 mailbox sidebar shell using App's completed accessory
+  presentation state. Consume Mailbox values and emit stable envelope ids only.
 
 ## Notes for AI changes
 

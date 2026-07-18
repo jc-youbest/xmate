@@ -65,8 +65,13 @@ enum AppFlowState {
     case failed(DocumentOpenError)
 }
 
+enum EditorWorkspaceAccessory: Equatable {
+    case mailboxSidebar
+}
+
 enum MailboxEnvelopeSelectionRejection: Equatable {
     case requiresEditorDestination
+    case requiresMailboxSidebar
     case envelopeNotFound(id: UUID)
     case repositoryFailure(id: UUID)
     case cacheUnavailable(MailboxDocumentCacheResolution)
@@ -87,6 +92,7 @@ final class AppFlowCoordinator: ObservableObject {
 
     @Published private(set) var state: AppFlowState = .resolving
     @Published private(set) var presentedOpenError: DocumentOpenError?
+    @Published private(set) var editorWorkspaceAccessory: EditorWorkspaceAccessory?
 
     private let validateDocument: DocumentValidator
     private let resolveEditorPolicy: EditorPolicyResolver
@@ -122,13 +128,41 @@ final class AppFlowCoordinator: ObservableObject {
 
     func handleEditorOutput(_ intent: EditorOutputIntent) {
         switch intent {
+        case .showMailbox:
+            guard case .ready(.editor) = state else { return }
+            editorWorkspaceAccessory = .mailboxSidebar
+
         case .showSocial:
-            guard case .ready(.editor(let editorDestination)) = state else {
+            guard case .ready(.editor(let editorDestination)) = state,
+                  editorWorkspaceAccessory == nil else {
                 return
             }
 
             editorReturnDestination = editorDestination
             present(.social(SocialRoute()))
+        }
+    }
+
+    func handleMailboxSidebarOutput(_ intent: MailboxSidebarOutputIntent) {
+        switch intent {
+        case .closeSidebar:
+            guard editorWorkspaceAccessory == .mailboxSidebar,
+                  case .ready(.editor(let destination)) = state else {
+                return
+            }
+
+            let committedPolicy = ComponentWindowLayoutPolicy.documentDirected(
+                resolveEditorPolicy(destination.document)
+            )
+            let committedDestination = ResolvedEditorDestination(
+                route: EditorRoute(
+                    source: destination.route.source,
+                    windowLayoutPolicy: committedPolicy
+                ),
+                document: destination.document
+            )
+            present(.editor(committedDestination))
+            editorWorkspaceAccessory = nil
         }
     }
 
@@ -159,6 +193,9 @@ final class AppFlowCoordinator: ObservableObject {
     ) -> MailboxEnvelopeSelectionOutcome {
         guard case .ready(.editor(let currentDestination)) = state else {
             return .rejected(.requiresEditorDestination)
+        }
+        guard editorWorkspaceAccessory == .mailboxSidebar else {
+            return .rejected(.requiresMailboxSidebar)
         }
 
         let resolvedEnvelope: MailboxEnvelopeDocumentResolution

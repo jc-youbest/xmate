@@ -182,7 +182,7 @@ struct AppFlowCoordinatorTests {
         #expect(resolutionCount == 1)
     }
 
-    @Test func mailboxCacheHitReplacesDocumentWithoutChangingWindowPolicy() throws {
+    @Test func mailboxSelectionCommitsItsWindowPolicyOnlyWhenSidebarCloses() throws {
         let store = makeStore()
         let initialDocument = try makeStoredDocument(
             in: store,
@@ -193,17 +193,26 @@ struct AppFlowCoordinatorTests {
             named: "Selected"
         )
         let envelope = try makeEnvelope(for: selectedDocument)
-        let editorPolicy = EditorWindowOrientationPolicy(
+        let initialPolicy = EditorWindowOrientationPolicy(
             preferredInterfaceOrientations: [.portrait, .portraitUpsideDown],
             debugName: "portrait"
         )
-        let componentPolicy = ComponentWindowLayoutPolicy.documentDirected(
-            editorPolicy
+        let selectedPolicy = EditorWindowOrientationPolicy(
+            preferredInterfaceOrientations: [.landscapeLeft, .landscapeRight],
+            debugName: "landscape"
+        )
+        let initialComponentPolicy = ComponentWindowLayoutPolicy.documentDirected(
+            initialPolicy
+        )
+        let selectedComponentPolicy = ComponentWindowLayoutPolicy.documentDirected(
+            selectedPolicy
         )
         var appliedPolicies: [ComponentWindowLayoutPolicy] = []
         let coordinator = AppFlowCoordinator(
             validateDocument: { _ in nil },
-            resolveEditorPolicy: { _ in editorPolicy },
+            resolveEditorPolicy: { document in
+                document === selectedDocument ? selectedPolicy : initialPolicy
+            },
             applyWindowPolicy: { appliedPolicies.append($0) }
         )
         coordinator.start(
@@ -213,6 +222,10 @@ struct AppFlowCoordinatorTests {
         ) {
             initialDocument
         }
+        coordinator.handleEditorOutput(.showMailbox)
+
+        #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
+        #expect(appliedPolicies == [initialComponentPolicy])
 
         let outcome = coordinator.selectMailboxEnvelope(
             id: envelope.id,
@@ -230,8 +243,23 @@ struct AppFlowCoordinatorTests {
             id: envelope.id,
             location: envelope.mailboxLocation
         ))
-        #expect(destination.route.windowLayoutPolicy == componentPolicy)
-        #expect(appliedPolicies == [componentPolicy])
+        #expect(destination.route.windowLayoutPolicy == initialComponentPolicy)
+        #expect(appliedPolicies == [initialComponentPolicy])
+        #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
+
+        coordinator.handleMailboxSidebarOutput(.closeSidebar)
+
+        #expect(coordinator.editorWorkspaceAccessory == nil)
+        #expect(appliedPolicies == [
+            initialComponentPolicy,
+            selectedComponentPolicy,
+        ])
+        guard case .ready(.editor(let committed)) = coordinator.state else {
+            Issue.record("Expected the full-screen Editor destination")
+            return
+        }
+        #expect(committed.document === selectedDocument)
+        #expect(committed.route.windowLayoutPolicy == selectedComponentPolicy)
     }
 
     @Test func mailboxCacheMissPreservesCurrentEditorDocument() throws {
@@ -245,6 +273,7 @@ struct AppFlowCoordinatorTests {
             revision: .initial
         )
         let coordinator = makeStartedCoordinator(document: currentDocument)
+        coordinator.handleEditorOutput(.showMailbox)
         let missing = MailboxDocumentCacheResolution.missing(
             DocumentCacheRequirement(
                 documentID: envelope.documentID,
@@ -268,6 +297,23 @@ struct AppFlowCoordinatorTests {
         expectEditorDocument(currentDocument, in: coordinator)
     }
 
+    @Test func mailboxSelectionRequiresTheSidebarWorkspace() {
+        let document = makeUnmanagedDocument()
+        let coordinator = makeStartedCoordinator(document: document)
+
+        let outcome = coordinator.selectMailboxEnvelope(
+            id: UUID(),
+            resolveEnvelope: { _ in
+                Issue.record("Selection must stop before repository lookup")
+                return nil
+            },
+            resolveCachedDocument: { _ in nil }
+        )
+
+        #expect(outcome == .rejected(.requiresMailboxSidebar))
+        expectEditorDocument(document, in: coordinator)
+    }
+
     @Test func staleMailboxDocumentPreservesCurrentEditorDocument() throws {
         let store = makeStore()
         let currentDocument = try makeStoredDocument(
@@ -289,6 +335,7 @@ struct AppFlowCoordinatorTests {
             )
         )
         let coordinator = makeStartedCoordinator(document: currentDocument)
+        coordinator.handleEditorOutput(.showMailbox)
 
         let outcome = coordinator.selectMailboxEnvelope(
             id: envelope.id,
@@ -340,6 +387,7 @@ struct AppFlowCoordinatorTests {
         ) {
             currentDocument
         }
+        coordinator.handleEditorOutput(.showMailbox)
 
         let outcome = coordinator.selectMailboxEnvelope(
             id: envelope.id,
@@ -349,6 +397,18 @@ struct AppFlowCoordinatorTests {
 
         #expect(outcome == .rejected(.invalidDocument(validationError)))
         expectEditorDocument(currentDocument, in: coordinator)
+        #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
+    }
+
+    @Test func socialTransitionIsIgnoredWhileMailboxSidebarIsOpen() {
+        let document = makeUnmanagedDocument()
+        let coordinator = makeStartedCoordinator(document: document)
+
+        coordinator.handleEditorOutput(.showMailbox)
+        coordinator.handleEditorOutput(.showSocial)
+
+        #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
+        expectEditorDocument(document, in: coordinator)
     }
 
     @Test func systemResponsivePolicyAcceptsAllSystemOrientations() {

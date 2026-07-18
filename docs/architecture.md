@@ -822,7 +822,8 @@ the full-screen request, but it is not part of this increment.
 
 ### Editor Workspace accessories
 
-Target contract (not runtime yet): App may compose an `EditorWorkspace` that
+The App-owned presentation-state foundation is now runtime; the Library view
+and split layout are not yet composed. App may compose an `EditorWorkspace` that
 keeps Editor mounted while presenting auxiliary Library/Social UI. A mailbox
 sidebar for Inbox, Drafts, Outbox, and Sent reserves its own leading region and
 reduces the Editor viewport; it never overlays the writing surface. A floating
@@ -836,6 +837,18 @@ only its assigned viewport and typed lifecycle requests; no sibling module
 calls another. The outer Editor Workspace keeps the Document-directed window
 policy most recently committed for full-screen Editor. A standalone Library,
 Social, or Send Form route instead uses a system-responsive policy.
+
+`AppFlowCoordinator.editorWorkspaceAccessory` currently represents the optional
+mailbox sidebar. Editor's typed `showMailbox` output can open it only from an
+Editor destination, and Library's typed `closeSidebar` output can close it only
+while that accessory is active. Opening does not change route or window policy.
+Envelope selection is rejected unless this sidebar state is active. Closing
+recomputes the selected Document's document-directed policy, applies it before
+publishing the full-screen Editor destination, and then clears the accessory.
+Social transition requests are ignored while the mailbox is open so the
+coordinator never stores an ambiguous Editor return policy. The actual sidebar
+view, top-bar trigger, and viewport-resize transaction remain the next UI
+increment.
 
 While the mailbox sidebar is visible, selecting Documents from Inbox, Drafts,
 Outbox, or Sent must not repeatedly rotate the App. App resolves and validates
