@@ -27,8 +27,9 @@
 
 ## Next step (current stage)
 
-- Nothing. Do not build ahead of v3; designs land in the Backlog of `roadmap.md`
-  first.
+- Implement the F-062 mailbox sidebar shell after App owns workspace accessory
+  presentation and Editor emits typed show/close intents. Consume Mailbox
+  values and emit stable envelope ids only.
 
 ## Notes for AI changes
 

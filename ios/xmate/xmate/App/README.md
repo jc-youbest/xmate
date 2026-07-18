@@ -29,6 +29,10 @@
   WritingScreen destination. Validation errors are App-layer document-open
   failures with stable error codes; RootView renders the failure, and the
   editor/orientation bridge are not loaded.
+- Mailbox-envelope selection accepts stable ids only, requires a local cache
+  hit, rechecks the cached Document id/revision, and validates before replacing
+  the Editor destination. Typed failures preserve the current Document, and a
+  workspace selection keeps the current window policy until sidebar dismissal.
 - Global user preferences (SettingsStore, UserDefaults-backed).
 - Top-level switching between the Social Screen shell and Content Screen;
   future entry flows from Inbox / Drafts resolve an envelope through Mailbox,
@@ -55,8 +59,8 @@
 
 ## Next step (current stage)
 
-- Keep the F-055 Social shell structural. Resume the prioritized Editor work;
-  add another App route only when its real component flow begins.
+- Add Editor Workspace accessory state and typed show/close-mailbox intents,
+  then compose the Library sidebar without moving its UI into Editor.
 
 ## Notes for AI changes
 

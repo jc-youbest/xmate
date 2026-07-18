@@ -10,6 +10,7 @@ import Foundation
 
 enum DocumentOpenSource: Equatable {
     case developmentDocument(name: String)
+    case mailboxEnvelope(id: UUID, location: MailboxLocation)
 }
 
 struct DocumentOpenRequest: Equatable {
@@ -62,6 +63,20 @@ enum AppFlowState {
     case resolving
     case ready(ResolvedAppDestination)
     case failed(DocumentOpenError)
+}
+
+enum MailboxEnvelopeSelectionRejection: Equatable {
+    case requiresEditorDestination
+    case envelopeNotFound(id: UUID)
+    case repositoryFailure(id: UUID)
+    case cacheUnavailable(MailboxDocumentCacheResolution)
+    case cachedDocumentChanged(documentID: UUID)
+    case invalidDocument(DocumentOpenError)
+}
+
+enum MailboxEnvelopeSelectionOutcome: Equatable {
+    case applied
+    case rejected(MailboxEnvelopeSelectionRejection)
 }
 
 @MainActor
@@ -128,6 +143,74 @@ final class AppFlowCoordinator: ObservableObject {
             self.editorReturnDestination = nil
             present(.editor(editorReturnDestination))
         }
+    }
+
+    /// Replaces the Editor's Document from an envelope selected inside the
+    /// Editor Workspace. The caller must complete the Editor drawing handoff
+    /// before invoking this method. Failures preserve the current destination.
+    /// A successful selection also preserves the workspace window policy;
+    /// dismissing the sidebar will commit the selected Document's policy in a
+    /// later workspace-presentation increment.
+    @discardableResult
+    func selectMailboxEnvelope(
+        id: UUID,
+        resolveEnvelope: (UUID) throws -> MailboxEnvelopeDocumentResolution?,
+        resolveCachedDocument: (UUID) throws -> Document?
+    ) -> MailboxEnvelopeSelectionOutcome {
+        guard case .ready(.editor(let currentDestination)) = state else {
+            return .rejected(.requiresEditorDestination)
+        }
+
+        let resolvedEnvelope: MailboxEnvelopeDocumentResolution
+        do {
+            guard let resolution = try resolveEnvelope(id) else {
+                return .rejected(.envelopeNotFound(id: id))
+            }
+            resolvedEnvelope = resolution
+        } catch {
+            return .rejected(.repositoryFailure(id: id))
+        }
+
+        guard case .hit(let descriptor) = resolvedEnvelope.documentCache else {
+            return .rejected(
+                .cacheUnavailable(resolvedEnvelope.documentCache)
+            )
+        }
+
+        let document: Document
+        do {
+            guard let cachedDocument = try resolveCachedDocument(
+                descriptor.documentID
+            ),
+                  cachedDocument.id == descriptor.documentID,
+                  cachedDocument.contentRevision == descriptor.revision.rawValue
+            else {
+                return .rejected(.cachedDocumentChanged(
+                    documentID: descriptor.documentID
+                ))
+            }
+            document = cachedDocument
+        } catch {
+            return .rejected(.repositoryFailure(id: id))
+        }
+
+        if let error = validateDocument(document) {
+            return .rejected(.invalidDocument(error))
+        }
+
+        let route = EditorRoute(
+            source: .mailboxEnvelope(
+                id: resolvedEnvelope.envelope.id,
+                location: resolvedEnvelope.envelope.mailboxLocation
+            ),
+            windowLayoutPolicy: currentDestination.route.windowLayoutPolicy
+        )
+        state = .ready(.editor(ResolvedEditorDestination(
+            route: route,
+            document: document
+        )))
+        editorReturnDestination = nil
+        return .applied
     }
 
     private func openDocument(

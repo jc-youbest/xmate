@@ -40,8 +40,8 @@ coordination).
 
 ## Next step (current stage)
 
-- Add the App-owned selection integration that uses a local repository hit to
-  retrieve, validate, and inject a Document without changing Editor ownership.
+- Keep the completed local repository stable while App and Library add the
+  mailbox workspace presentation; add no remote behavior in F-062.
 
 ## Notes for AI changes
 

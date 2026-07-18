@@ -470,6 +470,20 @@ only then present `WritingScreen`. Failure stops before Editor construction and
 uses the existing App-layer open error. Back/return behavior is the inverse
 route transition owned by App, not an Editor or Library side effect.
 
+Mailbox selection now enters that boundary through
+`AppFlowCoordinator.selectMailboxEnvelope`. It is accepted only while an Editor
+destination is current and receives source-specific resolver closures from the
+composition root rather than constructing Storage or Mailbox dependencies
+inside the coordinator. App requires a repository cache hit, re-fetches the
+Document by the verified UUID, rechecks its revision, and runs the same open
+validator before publishing a mailbox-envelope Editor route. Missing envelopes,
+repository failures, missing/stale/invalid cache results, a changed cache entry,
+or document validation failures return typed rejections and leave the current
+Editor destination unchanged. Selection within the mailbox workspace preserves
+the current route's window policy and does not issue a geometry update; closing
+the future sidebar is the separate commit point for the selected Document's
+orientation policy.
+
 Leaving Editor for Social uses an Editor-owned handoff before App changes
 route. WritingScreen rejects the request while a page mutation or structural
 operation is pending, synchronously flushes every authoritative drawing
@@ -654,6 +668,14 @@ the matching envelope in the same context save. Rejected stale drawing writes
 do not advance either revision. The migration path is covered with an actual
 v2 SQLite fixture so page order, drawing bytes, drawing versions, paper fields,
 and timestamps are checked after opening through the v3 store.
+
+During the current pre-release development phase, installed Document data is
+disposable. The implemented v2→v3 migration remains useful regression coverage,
+but future schema increments are not required to preserve an older development
+installation: deleting and reinstalling the app is an accepted test reset.
+Do not let speculative backward compatibility block the active model design;
+explicit production migration guarantees begin only when the project declares
+that user data must be retained.
 
 *Rejected:* sender/recipient/mailbox fields on Document; a required Core Data
 Envelope→Document relationship that cannot represent an uncached payload; one
