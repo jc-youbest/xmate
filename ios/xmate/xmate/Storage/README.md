@@ -41,8 +41,8 @@
 
 ## Next step (current stage)
 
-- Bridge the raw v3 persistence primitives into the local Mailbox repository;
-  keep networking, authentication, sync, and remote delivery out of F-062.
+- Keep the completed v3 primitives behind Mailbox's local repository while App
+  integrates envelope selection; do not move cache semantics into Storage.
 
 ## Notes for AI changes
 

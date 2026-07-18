@@ -708,7 +708,7 @@ Library emits selectEnvelope(envelopeID)
 → App asks Editor to settle conflicting operations and flush drawing
 → App asks Mailbox to resolve the envelope's Document
 → Mailbox checks documentID and cached revision through Storage
-→ local hit returns the cached Document
+→ local hit authorizes the Storage adapter to return the cached Document
 → future miss/stale result may hydrate through a remote source, then persist
 → App validates the resolved Document
 → App replaces the Editor selection only after successful validation
@@ -720,6 +720,19 @@ persistence, or validation failure leaves the current valid Editor Document in
 place. While the mailbox sidebar is visible, a successful selection updates
 Editor content without committing a new App window orientation, as defined in
 Editor Workspace accessories below.
+
+The current `LocalMailboxRepository` is a main-actor facade over Storage's
+view-context APIs. It queries the single envelope store by typed
+`MailboxLocation`, decodes raw records into immutable `LetterEnvelope` values,
+and rejects missing, negative, or unknown persisted values at that boundary.
+Resolving an envelope id joins only by UUID and compares the envelope revision
+with a `CachedDocumentDescriptor`; it returns typed hit, missing, or stale
+metadata and never exposes a managed object. App may request the actual
+Document from Storage only after a hit, then performs its existing open
+validation before injection. An unknown envelope id returns no result, while a
+missing Document remains a valid metadata-only cache miss. This local facade
+does not seed data, mutate delivery state, fetch remotely, or fabricate
+content.
 
 Social owns Send Form UI and eligibility rules, then emits a typed save/queue
 intent. App invokes the matching Mailbox operation after completing the Editor

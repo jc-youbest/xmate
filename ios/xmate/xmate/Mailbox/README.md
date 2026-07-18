@@ -23,6 +23,8 @@ coordination).
 - `Model/MailboxLocation.swift` — four fixed mailbox locations
 - `Model/DeliveryState.swift` — minimal local transport vocabulary
 - `Resolution/MailboxDocumentCacheResolution.swift` — pure cache resolution
+- `Repository/LocalMailboxRepository.swift` — Storage record decoding, fixed
+  mailbox queries, and local envelope/Document cache resolution
 - `Transition/MailboxTransitionPolicy.swift` — legal local state changes
 
 ## Not responsible for
@@ -38,8 +40,8 @@ coordination).
 
 ## Next step (current stage)
 
-- Bridge Storage's completed Core Data v3 envelope-record and migration
-  primitives into a local Mailbox repository without adding remote behavior.
+- Add the App-owned selection integration that uses a local repository hit to
+  retrieve, validate, and inject a Document without changing Editor ownership.
 
 ## Notes for AI changes
 
