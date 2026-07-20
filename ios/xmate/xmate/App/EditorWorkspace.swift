@@ -46,11 +46,8 @@ struct EditorWorkspace: View {
                     onOutput: onEditorOutput
                 )
                 .id(destination.document.objectID)
-                .allowsHitTesting(
-                    presentation.editorInteractionMode.policy.fingersNavigate
-                        || presentation.editorInteractionMode.policy.pencilWrites
-                )
             }
+            .animation(.easeInOut(duration: 0.25), value: presentation)
         }
     }
 
@@ -64,6 +61,7 @@ struct EditorWorkspace: View {
             )
             .frame(width: width)
             .clipped()
+            .transition(.move(edge: .leading))
         } else {
             Color.clear
                 .frame(width: 0)

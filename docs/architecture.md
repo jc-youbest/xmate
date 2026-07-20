@@ -713,13 +713,13 @@ where current local behavior requires it.
 
 Library owns the mailbox sidebar UI. It asks Mailbox for presentation-ready
 envelope summaries, displays the four system locations, and emits typed intents
-such as `selectMailbox`, `selectEnvelope(envelopeID:)`, and `closeSidebar`.
+such as `selectMailbox` and `selectEnvelope(envelopeID:)`.
 Library does not fetch a Document, construct Editor, or change the workspace.
 The UI may label the four locations as folders, but no Folder domain entity is
 implied.
 
 Editor remains mailbox-blind. A WritingTopBar control may produce Editor output
-such as `showMailbox` or `showSendForm`; Editor never queries Envelope records,
+such as `toggleMailbox` or `showSendForm`; Editor never queries Envelope records,
 imports Library, calls Mailbox, or downloads content. It continues to edit only
 the validated Document App injects and to own its drawing/viewport lifecycle.
 
@@ -728,7 +728,7 @@ Editor mounted but suspends its hit testing for the entire browsing session.
 Opening is accepted only while Editor has no mutation or structural operation
 in progress and its viewport is at the normal 100% state; Editor then
 synchronously flushes every authoritative drawing before emitting
-`showMailbox`. The sidebar-selection flow is therefore:
+`toggleMailbox`. The sidebar-selection flow is therefore:
 
 ```text
 Library emits selectEnvelope(envelopeID)
@@ -828,13 +828,14 @@ the full-screen request, but it is not part of this increment.
 
 App now composes `EditorWorkspace` as stable sibling positions: a leading
 Library `MailboxSidebarView`, a divider, and the current `WritingScreen`.
-Opening or closing changes assigned width without replacing the workspace or
-animating the structural resize. The sidebar shows Inbox, Drafts, Outbox, and
-Sent and emits stable Envelope ids; it never overlays the writing surface. A
-future floating Send Form may appear above Editor, giving the user continuity
-with the current Document while temporarily suspending writing interaction.
-Neither accessory is an independent `UIWindowScene` or a replacement top-level
-surface.
+Opening slides the sidebar in from the leading screen edge while Editor
+contracts; closing reverses the same 0.25-second ease-in-out transition while
+Editor expands. This changes assigned geometry without replacing the workspace.
+The sidebar shows Inbox, Drafts, Outbox, and Sent and emits stable Envelope ids;
+it never overlays the writing surface. A future floating Send Form may appear
+above Editor, giving the user continuity with the current Document while
+temporarily suspending writing interaction. Neither accessory is an independent
+`UIWindowScene` or a replacement top-level surface.
 
 App owns workspace composition and `EditorWorkspacePresentation`: the state
 selects both the visible accessory and the typed `EditorInteractionMode`
@@ -854,12 +855,14 @@ Mailbox knowledge. App chooses the mode, while Editor owns drawing flush,
 drawing-recognizer enablement, first-responder resignation, ToolPicker
 hide/restore, and deterministic canvas reactivation.
 
-`AppFlowCoordinator.editorWorkspaceAccessory` represents the optional mailbox
-sidebar. The visible top-bar control emits Editor's typed `showMailbox` output,
-which can open it only from an Editor destination; Library's typed
-`closeSidebar` output can close it only while that accessory is active. Opening
-does not change route or window policy. Envelope selection is rejected unless
-this sidebar state is active. Closing recomputes the selected Document's
+`AppFlowCoordinator.editorWorkspacePresentation` represents full-screen and
+mailbox-browsing states. The persistent top-bar control emits one typed
+`toggleMailbox` output. In full screen, it prepares Editor and opens the
+sidebar; while browsing, it remains the sole active Editor control and closes
+the sidebar. Its icon changes from `sidebar.left` / “Show Mailbox” to
+`chevron.left` / “Hide Mailbox”; the redundant sidebar `xmark` is omitted.
+Opening does not change route or window policy. Envelope selection is rejected
+unless this sidebar state is active. Closing recomputes the selected Document's
 document-directed policy, applies it before publishing the full-screen Editor
 destination, and then clears the accessory. Social transition requests are
 ignored while the mailbox is open so the coordinator never stores an ambiguous
@@ -894,9 +897,11 @@ Before contraction, WritingScreen requires idle mutation/operation state and a
 normal viewport, then applies the suspended policy: authoritative drawings are
 flushed, Pencil drawing recognizers are disabled, the known ToolPicker anchor
 is hidden and resigned, and App presents the sidebar. Editor remains mounted
-but its hit testing stays disabled until dismissal, so no drawing or viewport
+with canvas hit testing disabled until dismissal, so no drawing or viewport
 state can change behind the sidebar and no writing affordance falsely remains
-visible. A successful selection replaces the validated destination and
+visible. WritingTopBar remains mounted, but all controls except the Mailbox
+toggle are disabled so the same spatial control can reverse the transition. A
+successful selection replaces the validated destination and
 deliberately gives the newly selected Core Data Document a fresh WritingScreen
 identity; failed resolution leaves the current Editor untouched. The leading
 width is capped at 320 points and yields before the Editor would fall below 500
@@ -908,12 +913,13 @@ open would require the richer ordered viewport/canvas/ToolPicker resize
 transaction described by the rejected alternatives below; it is not an
 implicit extension of this safe browsing mode.
 
-Workspace layout control must remain scoped to workspace-owned views. In
+Workspace layout control must remain scoped to the presentation change. In
 particular, an ancestor `.transaction { animation = nil }` must never wrap the
 Editor subtree: it also erases explicit descendant transactions such as Single
-Page's animated carousel. Sidebar width currently changes without an explicit
-animation, so no global transaction override is required. App may control the
-viewport and whether Editor interaction is available; it must not override
+Page's animated carousel. The sidebar uses a value-scoped animation keyed only
+to `EditorWorkspacePresentation`, so ordinary Editor updates and subsequent
+Single Page transactions are untouched. App may animate the assigned viewport
+and decide whether Editor interaction is available; it must not override
 pagination animations, zoom state, or PencilKit lifecycle inside Editor.
 
 A floating Send Form keeps Editor mounted but blocks underlying canvas hit

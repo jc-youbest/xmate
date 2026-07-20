@@ -27,7 +27,7 @@ final class xmateUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        let mailboxButton = app.buttons["Mailbox"]
+        let mailboxButton = app.buttons["Show Mailbox"]
         XCTAssertTrue(mailboxButton.waitForExistence(timeout: 5))
         mailboxButton.tap()
 
@@ -37,12 +37,13 @@ final class xmateUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Outbox"].exists)
         XCTAssertTrue(app.buttons["Sent"].exists)
 
-        let closeButton = app.buttons["Close Mailbox"]
-        XCTAssertTrue(closeButton.exists)
-        closeButton.coordinate(
+        let hideMailboxButton = app.buttons["Hide Mailbox"]
+        XCTAssertTrue(hideMailboxButton.exists)
+        hideMailboxButton.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).tap()
-        XCTAssertTrue(closeButton.waitForNonExistence(timeout: 2))
+        XCTAssertTrue(hideMailboxButton.waitForNonExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Show Mailbox"].exists)
     }
 
     @MainActor

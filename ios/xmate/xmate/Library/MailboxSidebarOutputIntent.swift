@@ -6,6 +6,5 @@
 import Foundation
 
 enum MailboxSidebarOutputIntent: Equatable {
-    case closeSidebar
     case selectEnvelope(id: UUID)
 }

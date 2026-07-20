@@ -24,8 +24,12 @@ struct WritingTopBar: View {
     /// Current zoom percentage while zoomed (e.g. 153), nil at fit (F-053).
     /// Non-nil shows ZoomResetButton.
     let zoomPercent: Int?
-    /// Ask App to present Library's mailbox sidebar.
-    let onShowMailbox: () -> Void
+    /// App-injected workspace state for the persistent Mailbox toggle.
+    let mailboxIsPresented: Bool
+    /// Mailbox remains available during workspace suspension; all other Editor
+    /// controls are disabled until full-screen writing resumes.
+    let otherControlsEnabled: Bool
+    let onToggleMailbox: () -> Void
     /// Leave the Content Screen through an App-coordinated typed intent.
     let onShowSocial: () -> Void
     /// Tap on ZoomResetButton — restores 100% (fit).
@@ -38,14 +42,17 @@ struct WritingTopBar: View {
     var body: some View {
         HStack(spacing: 0) {
 
-            Button(action: onShowMailbox) {
-                Image(systemName: "tray.full")
+            Button(action: onToggleMailbox) {
+                Image(systemName: mailboxIsPresented ? "chevron.left" : "sidebar.left")
                     .imageScale(.large)
                     .frame(width: 44, height: 44)
+                    .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
-            .accessibilityLabel("Mailbox")
+            .accessibilityLabel(
+                mailboxIsPresented ? "Hide Mailbox" : "Show Mailbox"
+            )
             .padding(.leading, 4)
 
             Button(action: onShowSocial) {
@@ -56,6 +63,7 @@ struct WritingTopBar: View {
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
             .accessibilityLabel("Social")
+            .disabled(!otherControlsEnabled)
 
             // PageIndicator
             Text("\(currentIndex + 1) / \(pageCount)")
@@ -80,6 +88,7 @@ struct WritingTopBar: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
                 .padding(.trailing, 8)
+                .disabled(!otherControlsEnabled)
             }
 
             // AddPageButton
@@ -90,6 +99,7 @@ struct WritingTopBar: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
+            .disabled(!otherControlsEnabled)
 
             // WritingOverflowMenu
             Menu {
@@ -122,6 +132,7 @@ struct WritingTopBar: View {
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
             .padding(.trailing, 8)
+            .disabled(!otherControlsEnabled)
         }
         .frame(height: 44)
         .background(.bar)
@@ -139,7 +150,9 @@ struct WritingTopBar: View {
             ),
             paginationStyle: .constant(.singlePage),
             zoomPercent: 153,
-            onShowMailbox: {},
+            mailboxIsPresented: false,
+            otherControlsEnabled: true,
+            onToggleMailbox: {},
             onShowSocial: {},
             onResetZoom: {},
             onAddPage: {},

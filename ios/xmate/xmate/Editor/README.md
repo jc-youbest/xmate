@@ -112,10 +112,12 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   viewport/page/PencilKit state. Before `.showSocial`, WritingScreen rejects a
   pending structural operation and synchronously flushes authoritative
   drawings; preserve that departure boundary for future component intents.
-- `.showMailbox` is emitted by the visible top-bar mailbox control only from an
-  idle, normal viewport. Opening synchronously applies workspace suspension:
-  authoritative drawings flush, Pencil input and ToolPicker are disabled, and
-  App keeps Editor mounted but blocks its hit testing until sidebar dismissal.
+- `.toggleMailbox` is emitted by the persistent top-bar sidebar control.
+  Opening is accepted only from an idle, normal viewport and synchronously
+  applies workspace suspension: authoritative drawings flush, Pencil input and
+  ToolPicker are disabled, and App keeps Editor mounted while blocking canvas
+  hit testing. During suspension, other top-bar controls are disabled but the
+  toggle remains active so it can request the reverse transition.
 - App may select Editor interaction semantics but must not operate PencilKit.
   Writing allows Pencil plus finger navigation; future read-only viewing keeps
   page/zoom navigation without Pencil or ToolPicker; workspace suspension

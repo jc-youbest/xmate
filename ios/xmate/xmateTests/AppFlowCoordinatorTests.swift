@@ -222,7 +222,7 @@ struct AppFlowCoordinatorTests {
         ) {
             initialDocument
         }
-        coordinator.handleEditorOutput(.showMailbox)
+        coordinator.handleEditorOutput(.toggleMailbox)
 
         #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
         #expect(coordinator.editorWorkspacePresentation == .mailboxBrowsing)
@@ -252,7 +252,7 @@ struct AppFlowCoordinatorTests {
         #expect(appliedPolicies == [initialComponentPolicy])
         #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
 
-        coordinator.handleMailboxSidebarOutput(.closeSidebar)
+        coordinator.handleEditorOutput(.toggleMailbox)
 
         #expect(coordinator.editorWorkspaceAccessory == nil)
         #expect(coordinator.editorWorkspacePresentation == .fullScreen)
@@ -283,7 +283,7 @@ struct AppFlowCoordinatorTests {
             revision: .initial
         )
         let coordinator = makeStartedCoordinator(document: currentDocument)
-        coordinator.handleEditorOutput(.showMailbox)
+        coordinator.handleEditorOutput(.toggleMailbox)
         let missing = MailboxDocumentCacheResolution.missing(
             DocumentCacheRequirement(
                 documentID: envelope.documentID,
@@ -345,7 +345,7 @@ struct AppFlowCoordinatorTests {
             )
         )
         let coordinator = makeStartedCoordinator(document: currentDocument)
-        coordinator.handleEditorOutput(.showMailbox)
+        coordinator.handleEditorOutput(.toggleMailbox)
 
         let outcome = coordinator.selectMailboxEnvelope(
             id: envelope.id,
@@ -397,7 +397,7 @@ struct AppFlowCoordinatorTests {
         ) {
             currentDocument
         }
-        coordinator.handleEditorOutput(.showMailbox)
+        coordinator.handleEditorOutput(.toggleMailbox)
 
         let outcome = coordinator.selectMailboxEnvelope(
             id: envelope.id,
@@ -414,7 +414,7 @@ struct AppFlowCoordinatorTests {
         let document = makeUnmanagedDocument()
         let coordinator = makeStartedCoordinator(document: document)
 
-        coordinator.handleEditorOutput(.showMailbox)
+        coordinator.handleEditorOutput(.toggleMailbox)
         coordinator.handleEditorOutput(.showSocial)
 
         #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)

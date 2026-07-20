@@ -240,16 +240,17 @@ Separately, outer SwiftUI hit testing prevented touches but did not resign the
 active `PKCanvasView` or tell its `PKToolPicker` to hide.
 
 **Implemented fix and boundary.** The workspace-wide transaction override was
-removed; sidebar structure has no explicit animation and cannot alter Editor
-descendant transactions. App now publishes an `EditorWorkspacePresentation`
-that selects a typed Editor interaction mode. Entering mailbox browsing maps to
-workspace suspension. Editor responds by flushing active drawings, disabling
-PencilKit drawing recognizers, hiding the picker from its known anchor,
-resigning first responder, and blocking all navigation at the workspace edge.
-Returning to full-screen writing deterministically promotes the desired visible
-canvas and restores the picker. A future read-only mode is separately modeled
-as Pencil-disabled but finger-navigation-enabled; it is not yet routed from an
-Envelope.
+removed. App now publishes an `EditorWorkspacePresentation` that selects a
+typed Editor interaction mode. Entering mailbox browsing maps to workspace
+suspension. Editor responds by flushing active drawings, disabling PencilKit
+drawing recognizers, hiding the picker from its known anchor, resigning first
+responder, and blocking canvas navigation. Returning to full-screen writing
+deterministically promotes the desired visible canvas and restores the picker.
+A later sidebar UX increment adds a value-scoped animation keyed only to the
+workspace presentation; unlike the removed persistent transaction override,
+it does not affect ordinary Single Page updates. A future read-only mode is
+separately modeled as Pencil-disabled but finger-navigation-enabled; it is not
+yet routed from an Envelope.
 
 **Device verification.** All six acceptance checks passed on the primary iPad:
 portrait and landscape Single Page transitions animate again; opening Mailbox

@@ -172,7 +172,9 @@ struct WritingScreen: View {
                     layoutContext: layoutContext,
                     paginationStyle: $settings.paginationStyle,
                     zoomPercent: topBarZoomPercent,
-                    onShowMailbox: handleShowMailbox,
+                    mailboxIsPresented: interactionMode == .workspaceSuspended,
+                    otherControlsEnabled: interactionMode != .workspaceSuspended,
+                    onToggleMailbox: handleMailboxToggle,
                     onShowSocial: handleShowSocial,
                     onResetZoom: resetZoom,
                     onAddPage: handleAddPage,
@@ -189,6 +191,10 @@ struct WritingScreen: View {
                 // for the Swift type checker (the GeometryReader + gesture tree
                 // would otherwise exceed the compiler's expression-complexity limit).
                 canvasArea(layoutContext: layoutContext)
+                    .allowsHitTesting(
+                        interactionMode.policy.fingersNavigate
+                            || interactionMode.policy.pencilWrites
+                    )
             } else {
                 // Pages not resolved yet — show the letterbox background, never
                 // an empty-page pagination view (see comment above).
@@ -555,7 +561,12 @@ struct WritingScreen: View {
 
     // MARK: - Page CRUD (F-051)
 
-    private func handleShowMailbox() {
+    private func handleMailboxToggle() {
+        if interactionMode == .workspaceSuspended {
+            onOutput(.toggleMailbox)
+            return
+        }
+
         guard mutationPhase == .idle,
               editorOperationPhase == .idle,
               currentEditorViewportState == .normal else {
@@ -568,7 +579,7 @@ struct WritingScreen: View {
         }
 
         DrawingSessionManager.shared.prepareForMailboxBrowsing()
-        onOutput(.showMailbox)
+        onOutput(.toggleMailbox)
     }
 
     private func handleShowSocial() {

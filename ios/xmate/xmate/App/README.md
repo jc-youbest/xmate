@@ -36,7 +36,8 @@
 - Editor Workspace presentation state is App-owned. It selects both the
   accessory and the Editor interaction mode. Opening the mailbox keeps the
   current route/policy while suspending Editor; closing commits the selected
-  Document's orientation policy before restoring writing mode.
+  Document's orientation policy before restoring writing mode. The same typed
+  top-bar toggle drives both directions of the scoped sidebar transition.
 - Global user preferences (SettingsStore, UserDefaults-backed).
 - Top-level switching between the Social Screen shell and Content Screen;
   future entry flows from Inbox / Drafts resolve an envelope through Mailbox,

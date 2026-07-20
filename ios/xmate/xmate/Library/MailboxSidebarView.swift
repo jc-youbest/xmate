@@ -26,16 +26,6 @@ struct MailboxSidebarView: View {
             Text("Mailbox")
                 .font(.headline)
             Spacer()
-            Button {
-                onOutput(.closeSidebar)
-            } label: {
-                Image(systemName: "xmark")
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .frame(width: 44, height: 44)
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close Mailbox")
         }
         .padding(.horizontal, 12)
         .frame(height: 44)

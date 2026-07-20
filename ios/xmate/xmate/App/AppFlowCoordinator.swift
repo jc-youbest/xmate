@@ -154,9 +154,14 @@ final class AppFlowCoordinator: ObservableObject {
 
     func handleEditorOutput(_ intent: EditorOutputIntent) {
         switch intent {
-        case .showMailbox:
-            guard case .ready(.editor) = state else { return }
-            editorWorkspacePresentation = .mailboxBrowsing
+        case .toggleMailbox:
+            switch editorWorkspacePresentation {
+            case .fullScreen:
+                guard case .ready(.editor) = state else { return }
+                editorWorkspacePresentation = .mailboxBrowsing
+            case .mailboxBrowsing:
+                closeMailboxSidebar()
+            }
 
         case .showSocial:
             guard case .ready(.editor(let editorDestination)) = state,
@@ -176,26 +181,6 @@ final class AppFlowCoordinator: ObservableObject {
         resolveCachedDocument: (UUID) throws -> Document? = { _ in nil }
     ) -> MailboxEnvelopeSelectionOutcome? {
         switch intent {
-        case .closeSidebar:
-            guard editorWorkspaceAccessory == .mailboxSidebar,
-                  case .ready(.editor(let destination)) = state else {
-                return nil
-            }
-
-            let committedPolicy = ComponentWindowLayoutPolicy.documentDirected(
-                resolveEditorPolicy(destination.document)
-            )
-            let committedDestination = ResolvedEditorDestination(
-                route: EditorRoute(
-                    source: destination.route.source,
-                    windowLayoutPolicy: committedPolicy
-                ),
-                document: destination.document
-            )
-            present(.editor(committedDestination))
-            editorWorkspacePresentation = .fullScreen
-            return nil
-
         case .selectEnvelope(let id):
             return selectMailboxEnvelope(
                 id: id,
@@ -203,6 +188,26 @@ final class AppFlowCoordinator: ObservableObject {
                 resolveCachedDocument: resolveCachedDocument
             )
         }
+    }
+
+    private func closeMailboxSidebar() {
+        guard editorWorkspaceAccessory == .mailboxSidebar,
+              case .ready(.editor(let destination)) = state else {
+            return
+        }
+
+        let committedPolicy = ComponentWindowLayoutPolicy.documentDirected(
+            resolveEditorPolicy(destination.document)
+        )
+        let committedDestination = ResolvedEditorDestination(
+            route: EditorRoute(
+                source: destination.route.source,
+                windowLayoutPolicy: committedPolicy
+            ),
+            document: destination.document
+        )
+        present(.editor(committedDestination))
+        editorWorkspacePresentation = .fullScreen
     }
 
     func handleSocialOutput(_ intent: SocialScreenOutputIntent) {

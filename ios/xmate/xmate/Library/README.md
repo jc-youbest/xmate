@@ -18,8 +18,8 @@
 
 - `MailboxSidebarView.swift` — four-location mailbox navigation and local
   Envelope-summary list
-- `MailboxSidebarOutputIntent.swift` — typed close and stable Envelope-selection
-  requests consumed by App; Library never changes workspace state directly
+- `MailboxSidebarOutputIntent.swift` — stable Envelope-selection requests
+  consumed by App; Library never changes workspace state directly
 
 ## Not responsible for
 

@@ -4,6 +4,6 @@
 // Editor never imports or constructs a sibling component.
 
 enum EditorOutputIntent: Equatable {
-    case showMailbox
+    case toggleMailbox
     case showSocial
 }
