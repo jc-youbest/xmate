@@ -159,6 +159,10 @@ final class DrawingSessionManager {
     /// (e.g. single) canvas is still the active editor of the same page.
     private var desiredActivePageID: UUID?
     private var desiredActiveRole: CanvasRole?
+    /// False for read-only viewing and while an App-owned workspace accessory
+    /// suspends Editor. Registered canvases stay alive, but cannot draw or own
+    /// the ToolPicker until writing capability returns.
+    private var pencilWritingEnabled = true
 
     /// Debounce window for drawing-change saves (matches the previous
     /// Coordinator value).
@@ -205,8 +209,10 @@ final class DrawingSessionManager {
         } else {
             regs[id]?.isVisible = visible
         }
+        canvas.drawingGestureRecognizer.isEnabled = pencilWritingEnabled
 
-        if let wantPage = desiredActivePageID,
+        if pencilWritingEnabled,
+           let wantPage = desiredActivePageID,
            let wantRole = desiredActiveRole,
            wantPage == canvas.pageID,
            wantRole == canvas.role,
@@ -254,6 +260,7 @@ final class DrawingSessionManager {
         desiredActivePageID = pageID
         desiredActiveRole = role
         EditorTrace.event("setDesiredActive page=\(pageID.uuidString.prefix(4)) role=\(role)")
+        guard pencilWritingEnabled else { return }
         for reg in regs.values
         where reg.pageID == pageID && reg.role == role && reg.isVisible {
             guard let c = reg.canvas else { continue }
@@ -274,7 +281,8 @@ final class DrawingSessionManager {
     ///   4. take first responder.
     func makeActive(_ canvas: XmateCanvasView) {
         let id = ObjectIdentifier(canvas)
-        guard let reg = regs[id], reg.isVisible else { return }
+        guard pencilWritingEnabled,
+              let reg = regs[id], reg.isVisible else { return }
         let pid = reg.pageID
         let previousAnchor = anchor
 
@@ -323,7 +331,8 @@ final class DrawingSessionManager {
     func canvasBecameFirstResponder(_ canvas: XmateCanvasView) {
         EditorTrace.event("canvasBecameFR page=\(canvas.pageID.uuidString.prefix(4)) role=\(canvas.role)")
         let id = ObjectIdentifier(canvas)
-        guard let reg = regs[id], reg.isVisible else { return }
+        guard pencilWritingEnabled,
+              let reg = regs[id], reg.isVisible else { return }
         if anchor === canvas && reg.isActive { return }   // already current
         let pid = reg.pageID
 
@@ -357,7 +366,7 @@ final class DrawingSessionManager {
         // OS resign FR repeatedly; auto-recovering each one forms a resign↔become
         // loop that freezes panning. Don't recover until zoom returns to fit —
         // setRecoverySuspended(false) restores the picker then.
-        guard !recoverySuspended else { return }
+        guard pencilWritingEnabled, !recoverySuspended else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             // Someone already became first responder — nothing to recover.
@@ -381,7 +390,7 @@ final class DrawingSessionManager {
     func setRecoverySuspended(_ suspended: Bool) {
         guard recoverySuspended != suspended else { return }
         recoverySuspended = suspended
-        guard !suspended else { return }
+        guard pencilWritingEnabled, !suspended else { return }
         guard let wantPage = desiredActivePageID,
               let wantRole = desiredActiveRole else { return }
         for reg in regs.values
@@ -403,12 +412,53 @@ final class DrawingSessionManager {
         flushAllActive()
     }
 
+    /// Apply App-selected Editor capabilities without exposing PencilKit to
+    /// App. Losing writing capability flushes and demotes every authoritative
+    /// canvas, disables PencilKit's drawing recognizer, hides the ToolPicker,
+    /// and resigns its known anchor. Restoring it deterministically promotes
+    /// the desired visible canvas through the normal handoff path.
+    func setInteractionPolicy(_ policy: InteractionPolicy) {
+        let enabled = policy.pencilWrites
+        guard pencilWritingEnabled != enabled else { return }
+
+        if !enabled {
+            flushAllActive()
+        }
+        pencilWritingEnabled = enabled
+
+        for reg in regs.values {
+            reg.canvas?.drawingGestureRecognizer.isEnabled = enabled
+        }
+
+        if !enabled {
+            let previousAnchor = anchor
+            anchor = nil
+            if let previousAnchor {
+                ToolPickerHost.shared.hide(for: previousAnchor)
+                _ = previousAnchor.resignFirstResponder()
+            }
+            for reg in regs.values {
+                reg.isActive = false
+            }
+            activeByPage.removeAll()
+            return
+        }
+
+        guard let wantPage = desiredActivePageID,
+              let wantRole = desiredActiveRole else { return }
+        for reg in regs.values
+        where reg.pageID == wantPage && reg.role == wantRole && reg.isVisible {
+            guard let canvas = reg.canvas else { continue }
+            makeActive(canvas)
+            break
+        }
+    }
+
     /// Editor-owned handoff before App contracts the workspace for mailbox
-    /// browsing. The first sidebar implementation suspends Editor interaction
-    /// while open, so this flush freezes the authoritative drawing state used
-    /// by any subsequent envelope selection.
-    func flushForMailboxBrowsing() {
-        flushAllActive()
+    /// browsing. It persists drawings and removes Pencil writing affordances
+    /// synchronously before emitting the App-facing presentation intent.
+    func prepareForMailboxBrowsing() {
+        setInteractionPolicy(.suspended)
     }
 
     // MARK: - Save gating

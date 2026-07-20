@@ -60,6 +60,8 @@
 - `PencilKit/PencilKitBridge.swift`, `PencilKit/ToolPickerHost.swift`,
   `PencilKit/DrawingSessionManager.swift`
 - `Model/PageSpec.swift`, `Configuration/EditorConfiguration.swift`
+- `Configuration/InteractionPolicy.swift` — writing, read-only, and workspace-
+  suspended capability contract supplied by App and enforced inside Editor
 - `State/EditorOutputIntent.swift`, `State/EditorCommand.swift`,
   `State/EditorMutationPhase.swift`,
   `State/EditorOperationState.swift`
@@ -111,8 +113,16 @@ Later (behind v2): Reading Mode variant; per-document paper (drop the
   pending structural operation and synchronously flushes authoritative
   drawings; preserve that departure boundary for future component intents.
 - `.showMailbox` is emitted by the visible top-bar mailbox control only from an
-  idle, normal viewport. Opening synchronously flushes authoritative drawings;
-  App keeps Editor mounted but disables its hit testing until sidebar dismissal.
+  idle, normal viewport. Opening synchronously applies workspace suspension:
+  authoritative drawings flush, Pencil input and ToolPicker are disabled, and
+  App keeps Editor mounted but blocks its hit testing until sidebar dismissal.
+- App may select Editor interaction semantics but must not operate PencilKit.
+  Writing allows Pencil plus finger navigation; future read-only viewing keeps
+  page/zoom navigation without Pencil or ToolPicker; workspace suspension
+  allows neither. DrawingSessionManager enforces the PencilKit side.
+- An App/Workspace ancestor must never replace animation transactions for the
+  Editor subtree. Doing so erases Single Page's explicit carousel animation;
+  scope layout animation policy only to workspace-owned views.
 - Keep WritingTopBar presentational: WritingScreen interprets typed local
   actions and converts only component-exit requests into App-facing output.
 - Structural editor operations require a normal viewport. If Add Page, Delete

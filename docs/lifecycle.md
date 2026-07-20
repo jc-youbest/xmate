@@ -223,6 +223,45 @@ Major lifecycle/timing problems, newest first. Record the symptom, what is
 actually known, what was tried and rejected, and the current status — so a
 future session does not re-walk the same dead ends.
 
+### Mailbox workspace suppressed Single Page animation and retained ToolPicker — STATUS: FIXED AND DEVICE-VERIFIED (2026-07)
+
+**Symptoms.** After the first visible Mailbox sidebar landed, Single Page still
+changed pages in both portrait and landscape Documents, but its 0.25-second
+carousel transition disappeared. While the sidebar correctly blocked all
+Editor gestures, the ToolPicker remained visible and falsely suggested that
+Pencil writing was available.
+
+**Confirmed causes.** `EditorWorkspace` applied
+`.transaction { transaction.animation = nil }` to the `HStack` containing the
+entire `WritingScreen`. SwiftUI propagated that override into Single Page and
+erased the explicit `withAnimation` transaction used to change
+`currentPageIndex`; the offset therefore jumped immediately on both flow axes.
+Separately, outer SwiftUI hit testing prevented touches but did not resign the
+active `PKCanvasView` or tell its `PKToolPicker` to hide.
+
+**Implemented fix and boundary.** The workspace-wide transaction override was
+removed; sidebar structure has no explicit animation and cannot alter Editor
+descendant transactions. App now publishes an `EditorWorkspacePresentation`
+that selects a typed Editor interaction mode. Entering mailbox browsing maps to
+workspace suspension. Editor responds by flushing active drawings, disabling
+PencilKit drawing recognizers, hiding the picker from its known anchor,
+resigning first responder, and blocking all navigation at the workspace edge.
+Returning to full-screen writing deterministically promotes the desired visible
+canvas and restores the picker. A future read-only mode is separately modeled
+as Pencil-disabled but finger-navigation-enabled; it is not yet routed from an
+Envelope.
+
+**Device verification.** All six acceptance checks passed on the primary iPad:
+portrait and landscape Single Page transitions animate again; opening Mailbox
+hides the ToolPicker; Pencil, page-turn, zoom, and pan input remain blocked
+while browsing; closing restores the ToolPicker and immediate writing; and the
+same restoration succeeds after selecting another Envelope. The accompanying
+log confirms the portrait/vertical and landscape/horizontal Single Page layout
+paths and subsequent Document/pagination transitions without a new orientation
+or canvas-lifecycle failure. ToolPicker visibility was verified directly on the
+device because the opt-in `EditorTrace` picker diagnostics were not enabled for
+this acceptance run.
+
 ### Landscape Editor follows physical rotation to portrait — STATUS: FIXED AND DEVICE-VERIFIED (2026-07)
 
 **Symptom.** A validated A4 landscape Document opened with landscape paper and

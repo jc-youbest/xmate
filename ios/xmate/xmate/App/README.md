@@ -33,9 +33,10 @@
   hit, rechecks the cached Document id/revision, and validates before replacing
   the Editor destination. Typed failures preserve the current Document, and a
   workspace selection keeps the current window policy until sidebar dismissal.
-- Editor Workspace accessory state is App-owned. Opening the mailbox keeps the
-  current route/policy; closing commits the selected Document's orientation
-  policy before returning to full-screen Editor.
+- Editor Workspace presentation state is App-owned. It selects both the
+  accessory and the Editor interaction mode. Opening the mailbox keeps the
+  current route/policy while suspending Editor; closing commits the selected
+  Document's orientation policy before restoring writing mode.
 - Global user preferences (SettingsStore, UserDefaults-backed).
 - Top-level switching between the Social Screen shell and Content Screen;
   future entry flows from Inbox / Drafts resolve an envelope through Mailbox,

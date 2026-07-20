@@ -80,13 +80,16 @@ struct WritingScreen: View {
     /// The document being edited — injected by the composition root
     /// (AppRoot). See file header.
     let document: Document
+    let interactionMode: EditorInteractionMode
     let onOutput: (EditorOutputIntent) -> Void
 
     init(
         document: Document,
+        interactionMode: EditorInteractionMode = .writing,
         onOutput: @escaping (EditorOutputIntent) -> Void = { _ in }
     ) {
         self.document = document
+        self.interactionMode = interactionMode
         self.onOutput = onOutput
     }
 
@@ -116,6 +119,7 @@ struct WritingScreen: View {
         #endif
 
         configuration.pageSpec = document.resolvedPageSpec
+        configuration.interactionPolicy = interactionMode.policy
         return configuration
     }
 
@@ -192,7 +196,15 @@ struct WritingScreen: View {
                     .ignoresSafeArea()
             }
         }
-        .onAppear(perform: loadPages)
+        .onAppear {
+            DrawingSessionManager.shared.setInteractionPolicy(
+                interactionMode.policy
+            )
+            loadPages()
+        }
+        .onChange(of: interactionMode) { _, mode in
+            DrawingSessionManager.shared.setInteractionPolicy(mode.policy)
+        }
 
         // MARK: - Alerts
 
@@ -555,7 +567,7 @@ struct WritingScreen: View {
             return
         }
 
-        DrawingSessionManager.shared.flushForMailboxBrowsing()
+        DrawingSessionManager.shared.prepareForMailboxBrowsing()
         onOutput(.showMailbox)
     }
 

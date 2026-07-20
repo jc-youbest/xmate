@@ -225,6 +225,11 @@ struct AppFlowCoordinatorTests {
         coordinator.handleEditorOutput(.showMailbox)
 
         #expect(coordinator.editorWorkspaceAccessory == .mailboxSidebar)
+        #expect(coordinator.editorWorkspacePresentation == .mailboxBrowsing)
+        #expect(
+            coordinator.editorWorkspacePresentation.editorInteractionMode
+                == .workspaceSuspended
+        )
         #expect(appliedPolicies == [initialComponentPolicy])
 
         let outcome = coordinator.handleMailboxSidebarOutput(
@@ -250,6 +255,11 @@ struct AppFlowCoordinatorTests {
         coordinator.handleMailboxSidebarOutput(.closeSidebar)
 
         #expect(coordinator.editorWorkspaceAccessory == nil)
+        #expect(coordinator.editorWorkspacePresentation == .fullScreen)
+        #expect(
+            coordinator.editorWorkspacePresentation.editorInteractionMode
+                == .writing
+        )
         #expect(appliedPolicies == [
             initialComponentPolicy,
             selectedComponentPolicy,

@@ -11,13 +11,13 @@ enum EditorWorkspaceLayout {
 /// assigned width and never replaces the current WritingScreen by itself.
 struct EditorWorkspace: View {
     let destination: ResolvedEditorDestination
-    let accessory: EditorWorkspaceAccessory?
+    let presentation: EditorWorkspacePresentation
     let repository: LocalMailboxRepository
     let onEditorOutput: (EditorOutputIntent) -> Void
     let onMailboxOutput: (MailboxSidebarOutputIntent) -> Void
 
     private var isMailboxPresented: Bool {
-        accessory == .mailboxSidebar
+        presentation.accessory == .mailboxSidebar
     }
 
     private var selectedEnvelopeID: UUID? {
@@ -42,13 +42,14 @@ struct EditorWorkspace: View {
 
                 WritingScreen(
                     document: destination.document,
+                    interactionMode: presentation.editorInteractionMode,
                     onOutput: onEditorOutput
                 )
                 .id(destination.document.objectID)
-                .allowsHitTesting(!isMailboxPresented)
-            }
-            .transaction { transaction in
-                transaction.animation = nil
+                .allowsHitTesting(
+                    presentation.editorInteractionMode.policy.fingersNavigate
+                        || presentation.editorInteractionMode.policy.pencilWrites
+                )
             }
         }
     }

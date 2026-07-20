@@ -153,6 +153,16 @@ final class ToolPickerHost: NSObject, PKToolPickerObserver {
         EditorTrace.event("setVisible(true) page=\(canvas.pageID?.uuidString.prefix(4) ?? "----") isFR(after)=\(canvas.isFirstResponder) pickerVisible=\(picker.isVisible)")
     }
 
+    /// Hide the picker from its current, explicitly known responder. The
+    /// session manager remains the authority for when that responder may be
+    /// rebound after writing capability returns.
+    func hide(for canvas: XmateCanvasView) {
+        EditorTrace.event(
+            "setVisible(false) page=\(canvas.pageID?.uuidString.prefix(4) ?? "----")"
+        )
+        picker.setVisible(false, forFirstResponder: canvas)
+    }
+
     // MARK: PKToolPickerObserver — explicit tool push
 
     /// Push every selected-tool change to all live canvases, regardless of

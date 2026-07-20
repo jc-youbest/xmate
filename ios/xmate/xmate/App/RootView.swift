@@ -105,7 +105,7 @@ struct RootView: View {
         case .editor(let editorDestination):
             EditorWorkspace(
                 destination: editorDestination,
-                accessory: coordinator.editorWorkspaceAccessory,
+                presentation: coordinator.editorWorkspacePresentation,
                 repository: LocalMailboxRepository(store: store),
                 onEditorOutput: coordinator.handleEditorOutput,
                 onMailboxOutput: handleMailboxSidebarOutput

@@ -11,7 +11,7 @@ struct EditorConfiguration: Equatable {
     var pageSpec = PagePresetCatalog.currentDocumentPageSpec
     var layoutPolicy = LayoutPolicy()
     var zoomPolicy = ZoomPolicy()
-    var interactionPolicy = InteractionPolicy()
+    var interactionPolicy = InteractionPolicy.writing
     var pageMutationPolicy = PageMutationPolicy()
 
     static let currentDefault = EditorConfiguration()

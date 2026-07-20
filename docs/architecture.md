@@ -836,12 +836,23 @@ with the current Document while temporarily suspending writing interaction.
 Neither accessory is an independent `UIWindowScene` or a replacement top-level
 surface.
 
-App owns workspace composition and accessory presentation state. Library or
-Social supplies the sidebar/form UI and emits typed intents. Editor receives
-only its assigned viewport and typed lifecycle requests; no sibling module
-calls another. The outer Editor Workspace keeps the Document-directed window
-policy most recently committed for full-screen Editor. A standalone Library,
-Social, or Send Form route instead uses a system-responsive policy.
+App owns workspace composition and `EditorWorkspacePresentation`: the state
+selects both the visible accessory and the typed `EditorInteractionMode`
+injected into Editor. Library or Social supplies the sidebar/form UI and emits
+typed intents. Editor receives only its assigned viewport and mode; it alone
+interprets that mode into PencilKit, ToolPicker, navigation, and lifecycle
+behavior. No sibling module calls another. The outer Editor Workspace keeps the
+Document-directed window policy most recently committed for full-screen
+Editor. A standalone Library, Social, or Send Form route instead uses a
+system-responsive policy.
+
+Editor interaction has two independent capabilities: Pencil writing and finger
+navigation. Writing enables both; future read-only viewing disables Pencil
+writing and the ToolPicker while preserving page turns, zoom, and pan;
+workspace suspension disables both. These are Editor input semantics, not
+Mailbox knowledge. App chooses the mode, while Editor owns drawing flush,
+drawing-recognizer enablement, first-responder resignation, ToolPicker
+hide/restore, and deterministic canvas reactivation.
 
 `AppFlowCoordinator.editorWorkspaceAccessory` represents the optional mailbox
 sidebar. The visible top-bar control emits Editor's typed `showMailbox` output,
@@ -880,18 +891,30 @@ mailbox browsing.
 
 For this first implementation, mailbox browsing is explicitly non-writing.
 Before contraction, WritingScreen requires idle mutation/operation state and a
-normal viewport, then flushes authoritative drawings. Editor remains mounted
+normal viewport, then applies the suspended policy: authoritative drawings are
+flushed, Pencil drawing recognizers are disabled, the known ToolPicker anchor
+is hidden and resigned, and App presents the sidebar. Editor remains mounted
 but its hit testing stays disabled until dismissal, so no drawing or viewport
-state can change behind the sidebar. A successful selection replaces the
-validated destination and deliberately gives the newly selected Core Data
-Document a fresh WritingScreen identity; failed resolution leaves the current
-Editor untouched. The leading width is capped at 320 points and yields before
-the Editor would fall below 500 points (268/500 on the supported 768-point iPad
-width). Expansion reenables Editor interaction after App commits the latest
-selected Document's orientation policy. Supporting active writing while the
-sidebar is open would require the richer ordered viewport/canvas/ToolPicker
-resize transaction described by the rejected alternatives below; it is not an
+state can change behind the sidebar and no writing affordance falsely remains
+visible. A successful selection replaces the validated destination and
+deliberately gives the newly selected Core Data Document a fresh WritingScreen
+identity; failed resolution leaves the current Editor untouched. The leading
+width is capped at 320 points and yields before the Editor would fall below 500
+points (268/500 on the supported 768-point iPad width). Expansion changes the
+mode back to writing; Editor deterministically promotes the desired visible
+canvas and restores its ToolPicker after App commits the latest selected
+Document's orientation policy. Supporting active writing while the sidebar is
+open would require the richer ordered viewport/canvas/ToolPicker resize
+transaction described by the rejected alternatives below; it is not an
 implicit extension of this safe browsing mode.
+
+Workspace layout control must remain scoped to workspace-owned views. In
+particular, an ancestor `.transaction { animation = nil }` must never wrap the
+Editor subtree: it also erases explicit descendant transactions such as Single
+Page's animated carousel. Sidebar width currently changes without an explicit
+animation, so no global transaction override is required. App may control the
+viewport and whether Editor interaction is available; it must not override
+pagination animations, zoom state, or PencilKit lifecycle inside Editor.
 
 A floating Send Form keeps Editor mounted but blocks underlying canvas hit
 testing, performs any required drawing flush/suspension before presentation,

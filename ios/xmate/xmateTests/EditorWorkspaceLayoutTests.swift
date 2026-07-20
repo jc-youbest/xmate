@@ -29,3 +29,33 @@ struct EditorWorkspaceLayoutTests {
         #expect(600 - sidebarWidth == 500)
     }
 }
+
+struct EditorInteractionModeTests {
+    @Test func writingAllowsPencilAndFingerNavigation() {
+        let policy = EditorInteractionMode.writing.policy
+
+        #expect(policy.pencilWrites)
+        #expect(policy.fingersNavigate)
+    }
+
+    @Test func readOnlyKeepsNavigationWithoutPencilWriting() {
+        let policy = EditorInteractionMode.readOnly.policy
+
+        #expect(!policy.pencilWrites)
+        #expect(policy.fingersNavigate)
+    }
+
+    @Test func workspaceSuspensionRejectsAllEditorInteraction() {
+        let policy = EditorInteractionMode.workspaceSuspended.policy
+
+        #expect(!policy.pencilWrites)
+        #expect(!policy.fingersNavigate)
+    }
+
+    @Test func mailboxPresentationSuspendsEditorAndShowsSidebar() {
+        let presentation = EditorWorkspacePresentation.mailboxBrowsing
+
+        #expect(presentation.accessory == .mailboxSidebar)
+        #expect(presentation.editorInteractionMode == .workspaceSuspended)
+    }
+}

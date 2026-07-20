@@ -69,6 +69,28 @@ enum EditorWorkspaceAccessory: Equatable {
     case mailboxSidebar
 }
 
+/// App-owned coordination state for the sibling Library + Editor workspace.
+/// It determines both accessory presentation and the capability mode injected
+/// into Editor; App never manipulates PencilKit itself.
+enum EditorWorkspacePresentation: Equatable {
+    case fullScreen
+    case mailboxBrowsing
+
+    var accessory: EditorWorkspaceAccessory? {
+        switch self {
+        case .fullScreen: nil
+        case .mailboxBrowsing: .mailboxSidebar
+        }
+    }
+
+    var editorInteractionMode: EditorInteractionMode {
+        switch self {
+        case .fullScreen: .writing
+        case .mailboxBrowsing: .workspaceSuspended
+        }
+    }
+}
+
 enum MailboxEnvelopeSelectionRejection: Equatable {
     case requiresEditorDestination
     case requiresMailboxSidebar
@@ -92,7 +114,11 @@ final class AppFlowCoordinator: ObservableObject {
 
     @Published private(set) var state: AppFlowState = .resolving
     @Published private(set) var presentedOpenError: DocumentOpenError?
-    @Published private(set) var editorWorkspaceAccessory: EditorWorkspaceAccessory?
+    @Published private(set) var editorWorkspacePresentation: EditorWorkspacePresentation = .fullScreen
+
+    var editorWorkspaceAccessory: EditorWorkspaceAccessory? {
+        editorWorkspacePresentation.accessory
+    }
 
     private let validateDocument: DocumentValidator
     private let resolveEditorPolicy: EditorPolicyResolver
@@ -130,7 +156,7 @@ final class AppFlowCoordinator: ObservableObject {
         switch intent {
         case .showMailbox:
             guard case .ready(.editor) = state else { return }
-            editorWorkspaceAccessory = .mailboxSidebar
+            editorWorkspacePresentation = .mailboxBrowsing
 
         case .showSocial:
             guard case .ready(.editor(let editorDestination)) = state,
@@ -167,7 +193,7 @@ final class AppFlowCoordinator: ObservableObject {
                 document: destination.document
             )
             present(.editor(committedDestination))
-            editorWorkspaceAccessory = nil
+            editorWorkspacePresentation = .fullScreen
             return nil
 
         case .selectEnvelope(let id):
